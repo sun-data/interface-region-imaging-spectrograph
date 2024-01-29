@@ -7,10 +7,10 @@ __all__ = [
 
 
 def num_repeats(
-    time_start: str | astropy.time.Time,
-    time_stop: str | astropy.time.Time,
-    time_raster: u.Quantity,
-    time_slew: u.Quantity = 10 * u.min,
+    time_start,
+    time_stop,
+    time_raster,
+    time_slew=10 * u.min,
 ):
     if not isinstance(time_start, astropy.time.Time):
         time_start = astropy.time.Time(time_start)
