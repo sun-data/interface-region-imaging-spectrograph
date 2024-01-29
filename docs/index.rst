@@ -1,20 +1,15 @@
 Introduction
 ============
 
+API Reference
+=============
+
 .. autosummary::
     :toctree: _autosummary
     :template: module_custom.rst
     :recursive:
 
-    optika
-
-
-References
-==========
-
-.. bibliography::
-
-|
+    iris
 
 
 Indices and tables
