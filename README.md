@@ -8,3 +8,10 @@
 
 A Python library for downloading and analyzing images from the [Interface Region Imaging Spectrograph (IRIS)](iris.lmsal.com), 
 a NASA small explorer satellite which observes the Sun in ultraviolet.
+
+## Installation
+
+This library is published on PyPI and is installed using pip
+```
+pip install interface-region-imaging-spectrograph
+```
