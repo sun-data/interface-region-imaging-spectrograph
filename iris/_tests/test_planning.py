@@ -15,7 +15,6 @@ import iris
     argnames="time_stop",
     argvalues=[
         "2024-01-29T04:00:00",
-
     ],
 )
 @pytest.mark.parametrize(
