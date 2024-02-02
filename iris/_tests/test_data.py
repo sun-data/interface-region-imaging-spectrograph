@@ -7,7 +7,7 @@ import iris
 @pytest.mark.parametrize("time_start", [None])
 @pytest.mark.parametrize("time_stop", [None])
 @pytest.mark.parametrize("description", [""])
-@pytest.mark.parametrize("obs_id", [None])
+@pytest.mark.parametrize("obs_id", [None, 3882010194])
 @pytest.mark.parametrize("limit", [5])
 def test_query_hek(
     time_start: None | astropy.time.Time,
