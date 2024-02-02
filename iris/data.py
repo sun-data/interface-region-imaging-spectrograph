@@ -24,14 +24,16 @@ def query_hek(
     Parameters
     ----------
     time_start
-        The start time of the search period
+        The start time of the search period. If :obj:`None`, the start of operations,
+        2013-07-20 will be used.
     time_stop
-        the end time of the search period
+        The end time of the search period. If :obj:`None`, the current time will be used.
     description
-        the description of the observation
+        The description of the observation. If an empty string, observations with
+        any description will be returned.
     obs_id
         the OBSID of the observation, a number which describes the size, cadence,
-        etc. of the observation
+        etc. of the observation. If :obj:`None`, all OBSIDs will be used.
     limit
         the maximum number of files returned by the query
 
