@@ -2,6 +2,7 @@
 Utilities for finding and downloading IRIS data
 """
 
+from __future__ import annotations
 import astropy.time
 
 __all__ = [
@@ -10,8 +11,8 @@ __all__ = [
 
 
 def query_hek(
-    time_start: astropy.time.Time | None = None,
-    time_stop: astropy.time.Time | None = None,
+    time_start: None | astropy.time.Time = None,
+    time_stop: None | astropy.time.Time = None,
     description: str = "",
     obs_id: None | int = None,
     limit: int = 200,

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import pytest
 import astropy.time
 import iris
@@ -9,8 +10,8 @@ import iris
 @pytest.mark.parametrize("obs_id", [None])
 @pytest.mark.parametrize("limit", [5])
 def test_query_hek(
-    time_start: astropy.time.Time,
-    time_stop: astropy.time.Time,
+    time_start: None | astropy.time.Time,
+    time_stop: None | astropy.time.Time,
     description: str,
     obs_id: None | str,
     limit: int,
