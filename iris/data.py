@@ -157,7 +157,7 @@ def urls_hek(
             break
         except requests.exceptions.RequestException:  # pragma: no cover
             pass
-    else:
+    else:  # pragma: no cover
         raise ConnectionError(f"Could not get query {query}")
 
     result = []
