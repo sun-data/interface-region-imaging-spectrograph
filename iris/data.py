@@ -3,10 +3,13 @@ Utilities for finding and downloading IRIS data
 """
 
 from __future__ import annotations
+import requests
+import urlpath
 import astropy.time
 
 __all__ = [
     "query_hek",
+    "urls_hek",
 ]
 
 
@@ -77,3 +80,86 @@ def query_hek(
         query_hek += f"&obsId={obs_id}"
 
     return query_hek
+
+
+def urls_hek(
+    time_start: None | astropy.time.Time = None,
+    time_stop: None | astropy.time.Time = None,
+    description: str = "",
+    obs_id: None | int = None,
+    limit: int = 200,
+    spectrograph: bool = True,
+    sji: bool = True,
+) -> list[urlpath.URL]:
+    """
+    Find a list of URLs to download matching the given parameters.
+
+    Parameters
+    ----------
+    time_start
+        The start time of the search period. If :obj:`None`, the start of operations,
+        2013-07-20 will be used.
+    time_stop
+        The end time of the search period. If :obj:`None`, the current time will be used.
+    description
+        The description of the observation. If an empty string, observations with
+        any description will be returned.
+    obs_id
+        the OBSID of the observation, a number which describes the size, cadence,
+        etc. of the observation. If :obj:`None`, all OBSIDs will be used.
+    limit
+        the maximum number of files returned by the query
+    spectrograph
+        Boolean flag controlling whether to include spectrograph data.
+    sji
+        Boolean flag controlling whether to include SJI data.
+
+    Examples
+    --------
+    Find the URLs of the first 5 "A1: QS monitoring" spectrograph observations
+    in 2023.
+
+    .. jupyter-execute::
+
+        import astropy.time
+        import iris
+
+        iris.data.urls_hek(
+            time_start=astropy.time.Time("2023-01-01T00:00"),
+            time_stop=astropy.time.Time("2024-01-01T00:00"),
+            description="A1: QS monitoring",
+            limit=5,
+            sji=False,
+        )
+    """
+    query = query_hek(
+        time_start=time_start,
+        time_stop=time_stop,
+        description=description,
+        obs_id=obs_id,
+        limit=limit,
+    )
+
+    response = None
+    while response is None:
+        try:
+            response = requests.get(query, timeout=5)
+        except requests.exceptions.RequestException:
+            pass
+
+    response = response.json()
+
+    result = []
+    for event in response["Events"]:
+        for group in event["groups"]:
+
+            url = group["comp_data_url"]
+
+            if spectrograph:
+                if "raster" in url:
+                    result.append(urlpath.URL(url))
+            if sji:
+                if "SJI" in url:
+                    result.append(urlpath.URL(url))
+
+    return result
