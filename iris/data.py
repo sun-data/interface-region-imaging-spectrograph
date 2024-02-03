@@ -93,6 +93,7 @@ def urls_hek(
     spectrograph: bool = True,
     sji: bool = True,
     deconvolved: bool = False,
+    num_retry: int = 5,
 ) -> list[urlpath.URL]:
     """
     Find a list of URLs to download matching the given parameters.
@@ -121,6 +122,8 @@ def urls_hek(
     deconvolved
         Boolean flag controlling whether to include the deconvolved slitjaw
         imagery. Has no effect if ``sji`` is :obj:`False`.
+    num_retry
+        The number of times to try to connect to the server.
 
     Examples
     --------
@@ -148,12 +151,14 @@ def urls_hek(
         limit=limit,
     )
 
-    response = None
-    while response is None:
+    for i in range(num_retry):
         try:
             response = requests.get(query, timeout=5).json()
+            break
         except requests.exceptions.RequestException:  # pragma: no cover
             pass
+    else:
+        raise ConnectionError(f"Could not get query {query}")
 
     result = []
     for event in response["Events"]:
