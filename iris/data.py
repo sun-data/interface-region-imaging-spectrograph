@@ -152,7 +152,7 @@ def urls_hek(
     while response is None:
         try:
             response = requests.get(query, timeout=5).json()
-        except requests.exceptions.RequestException:    # pragma: no cover
+        except requests.exceptions.RequestException:  # pragma: no cover
             pass
 
     result = []
