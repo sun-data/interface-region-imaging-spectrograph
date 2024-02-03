@@ -68,7 +68,7 @@ def test_urls_hek(
         iris.data.urls_hek(
             obs_id=3882010194,
             limit=1,
-            spectrograph=True,
+            sji=False,
         ),
     ],
 )
