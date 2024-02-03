@@ -109,7 +109,9 @@ def urls_hek(
         the OBSID of the observation, a number which describes the size, cadence,
         etc. of the observation. If :obj:`None`, all OBSIDs will be used.
     limit
-        the maximum number of files returned by the query
+        The maximum number of observations returned by the query.
+        Note that this is not the same as the number of files since there
+        are several files per observation.
     spectrograph
         Boolean flag controlling whether to include spectrograph data.
     sji
