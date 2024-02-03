@@ -3,6 +3,7 @@ Utilities for finding and downloading IRIS data
 """
 
 from __future__ import annotations
+import pathlib
 import requests
 import urlpath
 import astropy.time
@@ -10,6 +11,7 @@ import astropy.time
 __all__ = [
     "query_hek",
     "urls_hek",
+    "download",
 ]
 
 
@@ -164,5 +166,60 @@ def urls_hek(
                             result.append(urlpath.URL(url))
                     else:
                         result.append(urlpath.URL(url))
+
+    return result
+
+
+def download(
+    urls: list[urlpath.URL],
+    directory: None | pathlib.Path = None,
+    overwrite: bool = False,
+) -> list[pathlib.Path]:
+    """
+    Download the given URLs to a specified directory.
+    If `overwrite` is :obj:`False`, the file will not be downloaded if it exists.
+
+    Parameters
+    ----------
+    urls
+        The URLs to download.
+    directory
+        The directory to place the downloaded files.
+    overwrite
+        Boolean flag controlling whether to overwrite existing files.
+
+
+    Examples
+    --------
+    Download the most recent "A1: QS monitoring" SJI files
+
+    .. jupyter-execute::
+
+        import iris
+
+        urls = iris.data.urls_hek(
+            description="A1: QS monitoring",
+            limit=1,
+            spectrograph=False,
+        )
+
+        iris.data.download(urls)
+    """
+    if directory is None:
+        directory = pathlib.Path.home() / ".iris/cache"
+
+    directory.mkdir(parents=True, exist_ok=True)
+
+    result = []
+    for url in urls:
+
+        file = directory / url.name
+
+        if overwrite or not file.exists():
+            r = requests.get(url)
+            with open(file, "wb") as f:
+                f.write(r.content)
+
+        result.append(file)
 
     return result

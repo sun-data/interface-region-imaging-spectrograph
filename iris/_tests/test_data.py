@@ -1,5 +1,6 @@
 from __future__ import annotations
 import pytest
+import pathlib
 import urlpath
 import astropy.time
 import iris
@@ -59,3 +60,31 @@ def test_urls_hek(
     assert len(result) > 0
     for url in result:
         assert isinstance(url, urlpath.URL)
+
+
+@pytest.mark.parametrize(
+    argnames="urls",
+    argvalues=[
+        iris.data.urls_hek(
+            obs_id=3882010194,
+            limit=1,
+            spectrograph=False,
+        ),
+    ],
+)
+@pytest.mark.parametrize("directory", [None])
+@pytest.mark.parametrize("overwrite", [False])
+def test_download(
+    urls: list[urlpath.URL],
+    directory: None | pathlib.Path,
+    overwrite: bool,
+):
+    result = iris.data.download(
+        urls=urls,
+        directory=directory,
+        overwrite=overwrite,
+    )
+    assert isinstance(result, list)
+    assert len(urls) == 1
+    for file in result:
+        assert file.exists()
