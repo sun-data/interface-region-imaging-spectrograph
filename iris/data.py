@@ -140,14 +140,7 @@ def urls_hek(
         limit=limit,
     )
 
-    response = None
-    while response is None:
-        try:
-            response = requests.get(query, timeout=5)
-        except requests.exceptions.RequestException:
-            pass
-
-    response = response.json()
+    response = requests.get(query, timeout=5).json()
 
     result = []
     for event in response["Events"]:
