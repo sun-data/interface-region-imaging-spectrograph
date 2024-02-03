@@ -43,7 +43,7 @@ def test_urls_hek(
     limit: int,
     spectrograph: bool,
     sji: bool,
-    deconvolved: bool
+    deconvolved: bool,
 ):
     result = iris.data.urls_hek(
         time_start=time_start,
