@@ -148,7 +148,12 @@ def urls_hek(
         limit=limit,
     )
 
-    response = requests.get(query, timeout=5).json()
+    response = None
+    while response is None:
+        try:
+            response = requests.get(query, timeout=5).json()
+        except requests.exceptions.RequestException:    # pragma: no cover
+            pass
 
     result = []
     for event in response["Events"]:
