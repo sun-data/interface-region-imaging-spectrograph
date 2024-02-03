@@ -3,7 +3,9 @@ Utilities for finding and downloading IRIS data
 """
 
 from __future__ import annotations
+from typing import Sequence
 import pathlib
+import shutil
 import requests
 import urlpath
 import astropy.time
@@ -12,6 +14,7 @@ __all__ = [
     "query_hek",
     "urls_hek",
     "download",
+    "decompress",
 ]
 
 
@@ -201,7 +204,7 @@ def download(
 
     Examples
     --------
-    Download the most recent "A1: QS monitoring" SJI files
+    Download the most recent "A1: QS monitoring" spectrograph files
 
     .. jupyter-execute::
 
@@ -210,7 +213,7 @@ def download(
         urls = iris.data.urls_hek(
             description="A1: QS monitoring",
             limit=1,
-            spectrograph=False,
+            sji=False,
         )
 
         iris.data.download(urls)
@@ -231,5 +234,67 @@ def download(
                 f.write(r.content)
 
         result.append(file)
+
+    return result
+
+
+def decompress(
+    archives: Sequence[pathlib.Path],
+    directory: None | pathlib.Path = None,
+    overwrite: bool = False,
+) -> list[pathlib.Path]:
+    """
+    Decompress a list of ``.tar.gz`` files.
+
+    Each ``.tar.gz`` file is decompressed and the ``.fits`` files within the
+    archive are appended to the returned list.
+
+    Parameters
+    ----------
+    archives
+        A list of ``.tar.gz`` files to decompress.
+    directory
+        A filesystem directory to place the decompressed results.
+        If :obj:`None`, the directory of the ``.tar.gz`` archive will be used.
+    overwrite
+        If the file already exists, it will be overwritten.
+
+    Examples
+    --------
+    Download the most recent "A1: QS monitoring" spectrograph files and
+    decompress into a list of ``.fits`` files.
+
+    .. jupyter-execute::
+
+        import iris
+
+        # Find the URL of the .tar.gz archive
+        urls = iris.data.urls_hek(
+            description="A1: QS monitoring",
+            limit=1,
+            sji=False,
+        )
+
+        # Download the .tar.gz archive
+        archives = iris.data.download(urls)
+
+        # Decompress the .tar.gz archive into a list of fits files
+        iris.data.decompress(archives)
+    """
+
+    result = []
+
+    for archive in archives:
+
+        if directory is None:
+            directory = archive.parent
+
+        destination = directory / pathlib.Path(archive.stem).stem
+
+        if overwrite or not destination.exists():
+            shutil.unpack_archive(archive, extract_dir=destination)
+
+        files = sorted(destination.rglob("*.fits"))
+        result = result + files
 
     return result
