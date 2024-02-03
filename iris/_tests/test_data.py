@@ -34,6 +34,7 @@ def test_query_hek(
 @pytest.mark.parametrize("limit", [5])
 @pytest.mark.parametrize("spectrograph", [True])
 @pytest.mark.parametrize("sji", [True])
+@pytest.mark.parametrize("deconvolved", [True])
 def test_urls_hek(
     time_start: None | astropy.time.Time,
     time_stop: None | astropy.time.Time,
@@ -42,6 +43,7 @@ def test_urls_hek(
     limit: int,
     spectrograph: bool,
     sji: bool,
+    deconvolved: bool
 ):
     result = iris.data.urls_hek(
         time_start=time_start,
@@ -51,6 +53,7 @@ def test_urls_hek(
         limit=limit,
         spectrograph=spectrograph,
         sji=sji,
+        deconvolved=deconvolved,
     )
     assert isinstance(result, list)
     assert len(result) > 0

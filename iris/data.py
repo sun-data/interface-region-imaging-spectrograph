@@ -90,6 +90,7 @@ def urls_hek(
     limit: int = 200,
     spectrograph: bool = True,
     sji: bool = True,
+    deconvolved: bool = False,
 ) -> list[urlpath.URL]:
     """
     Find a list of URLs to download matching the given parameters.
@@ -113,6 +114,9 @@ def urls_hek(
         Boolean flag controlling whether to include spectrograph data.
     sji
         Boolean flag controlling whether to include SJI data.
+    deconvolved
+        Boolean flag controlling whether to include the deconvolved slitjaw
+        imagery. Has no effect if ``sji`` is :obj:`False`.
 
     Examples
     --------
@@ -153,6 +157,10 @@ def urls_hek(
                     result.append(urlpath.URL(url))
             if sji:
                 if "SJI" in url:
-                    result.append(urlpath.URL(url))
+                    if "deconvolved" in url:
+                        if deconvolved:
+                            result.append(urlpath.URL(url))
+                    else:
+                        result.append(urlpath.URL(url))
 
     return result
