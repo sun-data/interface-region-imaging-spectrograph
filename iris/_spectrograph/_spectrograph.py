@@ -1,4 +1,3 @@
-from typing import Literal
 import dataclasses
 import pathlib
 import numpy as np
