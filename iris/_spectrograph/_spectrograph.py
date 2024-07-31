@@ -238,7 +238,7 @@ class SpectrographObservation(
 
         if window in windows:
             index_window = windows.index(window)
-        else:   # pragma: nocover
+        else:  # pragma: nocover
             raise ValueError(f"{window=} not in {windows=}")
 
         hdu_prototype = hdul_prototype[index_window]
