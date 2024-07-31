@@ -26,7 +26,8 @@ class SpectrographObservation(
     Examples
     --------
 
-    Load a IRIS raster and plot as an RGB image.
+    Load a IRIS raster and plot as an RGB image using the
+    :mod:`named_arrays.colorsynth` module.
 
     .. jupyter-execute::
 
