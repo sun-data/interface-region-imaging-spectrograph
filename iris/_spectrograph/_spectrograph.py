@@ -21,7 +21,7 @@ class SpectrographObservation(
     ]
 ):
     """
-    A representation of a sequence of IRIS raster or sit-and-stare observations.
+    A sequence of observations captured by the IRIS spectrograph.
 
     Examples
     --------
