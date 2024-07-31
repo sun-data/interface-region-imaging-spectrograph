@@ -17,6 +17,7 @@ dependencies = [
     "astropy",
     "requests",
     "urlpath",
+    "named-arrays==0.7.1",
 ]
 dynamic = ["version"]
 

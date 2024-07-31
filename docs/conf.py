@@ -19,7 +19,7 @@ os.environ['PYTHONPATH'] = ';'.join((package_path, os.environ.get('PYTHONPATH', 
 
 # -- Project information -----------------------------------------------------
 
-project = 'interface-region-imaging-spectrograph'
+project = 'IRIS'
 copyright = '2024, Roy T. Smart'
 author = 'Roy T. Smart'
 
