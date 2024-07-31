@@ -4,8 +4,10 @@ Python package for analyzing observations from the Interface Region Imaging Spec
 
 from . import planning
 from . import data
+from ._spectrograph import SpectrographObservation
 
 __all__ = [
     "planning",
     "data",
+    "SpectrographObservation",
 ]
