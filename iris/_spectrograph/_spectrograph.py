@@ -98,6 +98,7 @@ class SpectrographObservation(
             ax[0].set_aspect("equal")
             ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
             ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
+            ax[0].set_title(obs.inputs.time[index].ndarray)
             ax[1].yaxis.tick_right()
             ax[1].yaxis.set_label_position("right")
             ax[1].set_ylim(wavelength_min, wavelength_max)
@@ -280,7 +281,8 @@ class SpectrographObservation(
                 axes=tuple(shape_wcs),
             )
 
-            self.inputs.time[index] = astropy.time.Time(hdul[0].header["DATE_OBS"])
+            time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
+            self.inputs.time[index] = time
 
             crval = self.inputs.crval
             crval.wavelength[index] = wcs.crval[~iw] << u.m
@@ -310,6 +312,11 @@ class SpectrographObservation(
 
             key_center = f"TWAVE{index_window}"
             self.wavelength_center[index] = hdul[0].header[key_center] * u.AA
+
+        self.inputs.time.ndarray = astropy.time.Time(
+            val=self.inputs.time.ndarray,
+            format="jd",
+        ).isot
 
         return self
 
@@ -343,13 +350,7 @@ class SpectrographObservation(
         """
 
         inputs = na.ExplicitTemporalWcsSpectralPositionalVectorArray(
-            time=na.ScalarArray(
-                ndarray=astropy.time.Time(
-                    val=np.empty(tuple(shape_base.values())),
-                    format="jd",
-                ),
-                axes=tuple(shape_base),
-            ),
+            time=na.ScalarArray.zeros(shape_base),
             crval=na.SpectralPositionalVectorArray(
                 wavelength=na.ScalarArray.empty(shape_base) << u.AA,
                 position=na.Cartesian2dVectorArray(
