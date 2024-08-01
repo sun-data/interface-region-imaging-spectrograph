@@ -98,6 +98,7 @@ class SpectrographObservation(
             ax[0].set_aspect("equal")
             ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
             ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
+            ax[0].set_title(obs.inputs.time[index].ndarray)
             ax[1].yaxis.tick_right()
             ax[1].yaxis.set_label_position("right")
             ax[1].set_ylim(wavelength_min, wavelength_max)
