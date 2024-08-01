@@ -317,8 +317,6 @@ class SpectrographObservation(
             format="jd",
         ).isot
 
-        print(f"{self.inputs.time=}")
-
         return self
 
     @classmethod
