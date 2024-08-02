@@ -107,7 +107,7 @@ and display as a false-color movie.
     # Isolate the angular position of each RGB point
     position = obs.inputs.position.mean(obs.axis_wavelength)
 
-    # Plot the result as an RGB image
+    # Display the result as an RGB movie
     with astropy.visualization.quantity_support():
         fig, ax = plt.subplots(
             ncols=2,
@@ -135,8 +135,9 @@ and display as a false-color movie.
         ax[1].yaxis.tick_right()
         ax[1].yaxis.set_label_position("right")
         ax[1].set_ylim(velocity_min, velocity_max)
-        plt.close(fig)
-        IPython.display.HTML(ani.to_jshtml())
+
+    plt.close(fig)
+    IPython.display.HTML(ani.to_jshtml())
 
 
 Indices and tables
