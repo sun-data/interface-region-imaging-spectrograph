@@ -51,6 +51,18 @@ and display as a false-color movie.
         time_stop=astropy.time.Time("2021-09-23T03:00"),
     )
 
+    index = {obs.axis_wavelength: slice(75, 150)}
+    obs = dataclasses.replace(
+        obs,
+        inputs=na.TemporalSpectralPositionalVectorArray(
+            time=obs.inputs.time,
+            wavelength=obs.inputs.wavelength[index],
+            position=obs.inputs.position[index],
+        ),
+        outputs=obs.outputs[index],
+    )
+
+
     # Calculate the mean rest wavelength of the
     # brightest spectral line
     wavelength_center = obs.wavelength_center.ndarray.mean()
