@@ -229,7 +229,7 @@ def download(
         file = directory / url.name
 
         if overwrite or not file.exists():
-            r = requests.get(url)
+            r = requests.get(url, stream=True)
             with open(file, "wb") as f:
                 f.write(r.content)
 
