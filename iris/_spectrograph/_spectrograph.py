@@ -41,8 +41,8 @@ class SpectrographObservation(
 
         # Load a 320-step raster
         obs = iris.SpectrographObservation.from_time_range(
-            time_start=astropy.time.Time("2021-09-23T13:00"),
-            time_stop=astropy.time.Time("2021-09-23T15:30"),
+            time_start=astropy.time.Time("2021-09-23T02:00"),
+            time_stop=astropy.time.Time("2021-09-23T03:00"),
         )
 
         # Calculate the mean rest wavelength of the
