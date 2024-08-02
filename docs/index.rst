@@ -37,6 +37,7 @@ and display as a false-color movie.
 .. jupyter-execute::
 
     import IPython.display
+    import dataclasses
     import numpy as np
     import matplotlib.pyplot as plt
     import astropy.units as u
