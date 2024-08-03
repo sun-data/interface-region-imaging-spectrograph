@@ -46,12 +46,14 @@ and display as a false-color movie.
     import named_arrays as na
     import iris
 
-    # Load a 320-step raster
+    # Download a 320-step raster sequence
     obs = iris.SpectrographObservation.from_time_range(
         time_start=astropy.time.Time("2021-09-23T02:00"),
         time_stop=astropy.time.Time("2021-09-23T03:00"),
     )
 
+    # Crop the observation so readthedocs doesn't run out of memory.
+    # This is probably unnecessary on your machine
     index = {obs.axis_wavelength: slice(75, 150)}
     obs = dataclasses.replace(
         obs,
