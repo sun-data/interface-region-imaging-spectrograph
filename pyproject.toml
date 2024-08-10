@@ -39,6 +39,6 @@ doc = [
 
 [project.urls]
 Homepage = "https://github.com/sun-data/interface-region-imaging-spectrograph"
-Documentation = "https://interface-region-imaging-spectrograp.readthedocs.io/en/latest"
+Documentation = "https://interface-region-imaging-spectrograph.readthedocs.io/en/latest"
 
 [tool.setuptools_scm]
