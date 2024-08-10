@@ -9,7 +9,7 @@ authors = [
 ]
 description = "A Python library for analyzing solar observations from the Interface Region Imaging Spectrograph (IRIS)."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
@@ -39,6 +39,6 @@ doc = [
 
 [project.urls]
 Homepage = "https://github.com/sun-data/interface-region-imaging-spectrograph"
-Documentation = "https://interface-region-imaging-spectrograp.readthedocs.io/en/latest"
+Documentation = "https://interface-region-imaging-spectrograph.readthedocs.io/en/latest"
 
 [tool.setuptools_scm]
