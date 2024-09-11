@@ -14,14 +14,14 @@ import iris
 )
 class TestSpectrographObservation:
 
-    def test_axis_time(self, array: iris.SpectrographObservation):
+    def test_axis_time(self, array: iris.sg.SpectrographObservation):
         assert isinstance(array.axis_time, str)
 
-    def test_axis_wavelength(self, array: iris.SpectrographObservation):
+    def test_axis_wavelength(self, array: iris.sg.SpectrographObservation):
         assert isinstance(array.axis_wavelength, str)
 
-    def test_axis_detector_x(self, array: iris.SpectrographObservation):
+    def test_axis_detector_x(self, array: iris.sg.SpectrographObservation):
         assert isinstance(array.axis_detector_x, str)
 
-    def test_axis_detector_y(self, array: iris.SpectrographObservation):
+    def test_axis_detector_y(self, array: iris.sg.SpectrographObservation):
         assert isinstance(array.axis_detector_y, str)
