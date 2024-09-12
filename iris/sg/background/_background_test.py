@@ -12,7 +12,7 @@ import iris
             time_start=astropy.time.Time("2021-09-23T06:00"),
             time_stop=astropy.time.Time("2021-09-23T07:00"),
         )
-    ]
+    ],
 )
 def test_estimate(
     obs: iris.sg.SpectrographObservation,
