@@ -3,15 +3,83 @@ import astropy.units as u
 import named_arrays as na
 
 __all__ = [
+    "average",
     "model_background",
     "model_spectral_line",
     "model_total",
     "fit",
-    "average",
     "subtract_spectral_line",
     "smooth",
     "estimate",
 ]
+
+
+def average(
+    obs: na.FunctionArray,
+    axis: str | tuple[str, ...],
+) -> na.FunctionArray:
+    """
+    Compute the average along the given axis using :func:`numpy.nanmedian`
+
+    Parameters
+    ----------
+    obs
+        The observation to be averaged.
+    axis
+        The logical axis along which to take the average.
+
+    Examples
+    --------
+
+    Download an IRIS spectrograph observation and compute the average along
+    the raster average.
+
+    .. jupyter-execute::
+
+        import matplotlib.pyplot as plt
+        import astropy.visualization
+        import named_arrays as na
+        import iris
+
+        # Load a spectrograph observation
+        obs = iris.sg.SpectrographObservation.from_time_range(
+            time_start=astropy.time.Time("2021-09-23T06:00"),
+            time_stop=astropy.time.Time("2021-09-23T07:00"),
+        )
+
+        # Save the time and raster axes
+        axis = (obs.axis_time, obs.axis_detector_x)
+
+        # Compute the average along the time and raster axes
+        avg = iris.sg.background.average(
+            obs=obs,
+            axis=axis,
+        )
+
+        # Plot the result
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots()
+            img = na.plt.pcolormesh(
+                avg.inputs.wavelength,
+                avg.inputs.position.y,
+                C=avg.outputs.value,
+            )
+            ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
+            ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
+            fig.colorbar(
+                mappable=img.ndarray.item(),
+                ax=ax,
+                label=f"average spectral radiance ({obs.outputs.unit})",
+            )
+    """
+    obs = obs.copy_shallow()
+    obs.inputs = na.TemporalSpectralPositionalVectorArray(
+        time=obs.inputs.time.ndarray.mean(),
+        wavelength=obs.inputs.wavelength.mean(axis),
+        position=obs.inputs.position.mean(axis),
+    )
+    obs.outputs = np.nanmedian(obs.outputs, axis=axis)
+    return obs
 
 
 def model_background(
@@ -205,6 +273,94 @@ def fit(
         The logical axis corresponding to increasing wavelength (velocity).
     where
         The points in the observation to consider when fitting.
+
+    Examples
+    --------
+
+    Fit a spectrograph image and display the average actual line profile
+    compared to the average fitted line profile.
+
+    .. jupyter-execute::
+
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import astropy.units as u
+        import astropy.visualization
+        import named_arrays as na
+        import iris
+
+        # Load a spectrograph observation
+        obs = iris.sg.SpectrographObservation.from_time_range(
+            time_start=astropy.time.Time("2021-09-23T06:00"),
+            time_stop=astropy.time.Time("2021-09-23T07:00"),
+        )
+
+        # Save the time and raster axes
+        axis = (obs.axis_time, obs.axis_detector_x)
+
+        # Compute the average along the time and raster axes
+        avg = iris.sg.background.average(
+            obs=obs,
+            axis=axis,
+        )
+
+        # Ignore line profiles that are mostly NaN
+        where_crop = np.isfinite(avg.outputs).mean(avg.axis_wavelength) > 0.7
+        data = avg.outputs[where_crop]
+
+        # Calculate the mean rest wavelength of the
+        # brightest spectral line
+        wavelength_center = avg.wavelength_center.ndarray.mean()
+
+        # Convert wavelength to velocity units
+        velocity = avg.inputs.wavelength.to(
+            unit=u.km / u.s,
+            equivalencies=u.doppler_optical(wavelength_center),
+        )
+        velocity = velocity[where_crop]
+
+        # Fit the data within +/- 150 km/s of line center
+        where = np.abs(velocity) < 150 * u.km / u.s
+        parameters = iris.sg.background.fit(
+            data=data,
+            velocity=velocity,
+            axis_wavelength=obs.axis_wavelength,
+            where=where,
+        )
+
+        # Evaluate the model with the best-fit parameters
+        data_fit = iris.sg.background.model_total(
+            velocity=velocity,
+            amplitude=parameters.components["amplitude"],
+            shift=parameters.components["shift"],
+            width=parameters.components["width"],
+            kappa=parameters.components["kappa"],
+            bias=parameters.components["bias"],
+            slope=parameters.components["slope"],
+        )
+
+        # Plot the average data and model
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots()
+            na.plt.plot(
+                velocity.mean(obs.axis_detector_y),
+                data.mean(obs.axis_detector_y),
+                label="data",
+            )
+            na.plt.plot(
+                velocity.mean(obs.axis_detector_y),
+                data_fit.mean(obs.axis_detector_y),
+                label="fit",
+            )
+            na.plt.plot(
+                velocity.mean(obs.axis_detector_y),
+                (data - data_fit).mean(obs.axis_detector_y),
+                label="difference"
+            )
+            ax.set_xlim(-200, 200)
+            ax.set_xlabel(f"Doppler velocity ({ax.get_xlabel()})")
+            ax.set_ylabel(f"mean spectral radiance ({ax.get_ylabel()})")
+            ax.legend();`
     """
 
     def function(x: na.CartesianNdVectorArray):
@@ -269,81 +425,13 @@ def fit(
     return result
 
 
-def average(
-    obs: na.FunctionArray,
-    axis: str | tuple[str, ...],
-) -> na.FunctionArray:
-    """
-    Compute the average along the given axis using :func:`numpy.nanmedian`
-
-    Parameters
-    ----------
-    obs
-        The observation to be averaged.
-    axis
-        The logical axis along which to take the average.
-
-    Examples
-    --------
-
-    Download an IRIS spectrograph observation and compute the average along
-    the raster average.
-
-    .. jupyter-execute::
-
-        import matplotlib.pyplot as plt
-        import astropy.visualization
-        import named_arrays as na
-        import iris
-
-        # Load a spectrograph observation
-        obs = iris.sg.SpectrographObservation.from_time_range(
-            time_start=astropy.time.Time("2021-09-23T06:00"),
-            time_stop=astropy.time.Time("2021-09-23T07:00"),
-        )
-
-        # Save the time and raster axes
-        axis = (obs.axis_time, obs.axis_detector_x)
-
-        # Compute the average along the time and raster axes
-        avg = iris.sg.background.average(
-            obs=obs,
-            axis=axis,
-        )
-
-        # Plot the result
-        with astropy.visualization.quantity_support():
-            fig, ax = plt.subplots()
-            img = na.plt.pcolormesh(
-                avg.inputs.wavelength,
-                avg.inputs.position.y,
-                C=avg.outputs.value,
-            )
-            ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
-            ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
-            fig.colorbar(
-                mappable=img.ndarray.item(),
-                ax=ax,
-                label=f"average spectral radiance ({obs.outputs.unit})",
-            )
-    """
-    obs = obs.copy_shallow()
-    obs.inputs = na.TemporalSpectralPositionalVectorArray(
-        time=obs.inputs.time.ndarray.mean(),
-        wavelength=obs.inputs.wavelength.mean(axis),
-        position=obs.inputs.position.mean(axis),
-    )
-    obs.outputs = np.nanmedian(obs.outputs, axis=axis)
-    return obs
-
-
 def subtract_spectral_line(
     obs: na.FunctionArray[na.SpectralPositionalVectorArray, na.ScalarArray],
     axis_wavelength: str,
 ) -> na.FunctionArray[na.SpectralPositionalVectorArray, na.ScalarArray]:
     """
-    Fit `obs` using :func:`fit` and subtract the component from
-    :func:`model_spectral_line`.
+    Fit `obs` using :func:`fit` and subtract the :func:`model_spectral_line`
+    component.
 
     Parameters
     ----------
