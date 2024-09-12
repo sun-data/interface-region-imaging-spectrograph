@@ -640,7 +640,7 @@ def estimate(
     """
     Estimate the background from a given spectrograph observation.
 
-    This function applies :func;`average`, :func:`subtract_spectral_line`,
+    This function applies :func:`average`, :func:`subtract_spectral_line`,
     and :func:`smooth` in succession to estimate the background.
 
     Parameters
