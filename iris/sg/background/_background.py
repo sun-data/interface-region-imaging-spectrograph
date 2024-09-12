@@ -360,7 +360,7 @@ def fit(
             ax.set_xlim(-200, 200)
             ax.set_xlabel(f"Doppler velocity ({ax.get_xlabel()})")
             ax.set_ylabel(f"mean spectral radiance ({ax.get_ylabel()})")
-            ax.legend();`
+            ax.legend();
     """
 
     def function(x: na.CartesianNdVectorArray):
