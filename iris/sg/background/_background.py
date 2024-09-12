@@ -1,7 +1,3 @@
-"""
-Utilities for estimating the stray light background of FUV spectrograph images.
-"""
-
 import numpy as np
 import astropy.units as u
 import named_arrays as na
