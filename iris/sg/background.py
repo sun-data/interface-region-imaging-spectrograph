@@ -66,7 +66,7 @@ def model_spectral_line(
     to model the spectral line profile,
     where :math:`A` is the amplitude,
     :math:`v` is the velocity,
-    :math:`v` is the shift,
+    :math:`v_0` is the shift,
     :math:`\sigma` is the width,
     and :math:`\kappa` is a parameter which controls the thickness of the tails.
 
@@ -580,6 +580,7 @@ def estimate(
 
     .. jupyter-execute::
 
+        import numpy as np
         import matplotlib.pyplot as plt
         import astropy.units as u
         import astropy.visualization
@@ -627,6 +628,50 @@ def estimate(
                 ax=ax,
                 label=f"average spectral radiance ({obs.outputs.unit})",
             )
+
+    |
+
+    Subtract the background from the observation and compare to the original.
+
+    .. jupyter-execute::
+
+        # Remove background from spectrograph observation
+        obs_nobg = obs - bg
+
+        # Select the first raster to plot
+        index = {obs.axis_time: 0}
+
+        # Plot the original compared to the background-subtracted
+        # observation.
+        fig, ax = plt.subplots(
+            ncols=2,
+            sharex=True,
+            sharey=True,
+            constrained_layout=True,
+        )
+        with astropy.visualization.quantity_support():
+            mappable = plt.cm.ScalarMappable(
+                norm=plt.Normalize(vmin=0, vmax=5),
+            )
+            na.plt.pcolormesh(
+                obs.inputs.position.x[index].mean(obs.axis_wavelength),
+                obs.inputs.position.y[index].mean(obs.axis_wavelength),
+                C=np.nanmean(obs.outputs.value[index], axis=obs.axis_wavelength),
+                ax=ax[0],
+                norm=mappable.norm,
+                cmap=mappable.cmap,
+            )
+            na.plt.pcolormesh(
+                obs_nobg.inputs.position.x[index].mean(obs.axis_wavelength),
+                obs_nobg.inputs.position.y[index].mean(obs.axis_wavelength),
+                C=np.nanmean(obs_nobg.outputs.value[index], axis=obs.axis_wavelength),
+                ax=ax[1],
+                norm=mappable.norm,
+                cmap=mappable.cmap,
+            )
+            ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
+            ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
+            fig.colorbar(mappable, ax=ax)
     """
     avg = average(
         obs=obs,
