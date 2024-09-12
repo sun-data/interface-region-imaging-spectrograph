@@ -314,7 +314,7 @@ def average(
 
         # Compute the average along the time and raster axes
         avg = iris.sg.background.average(
-            data=obs.outputs,
+            obs=obs,
             axis=axis,
         )
 
@@ -433,7 +433,7 @@ def subtract_spectral_line(
         data=data,
         velocity=velocity,
         axis_wavelength=axis_wavelength,
-        where=where
+        where=where,
     )
 
     model_fit_line = model_spectral_line(
@@ -441,7 +441,7 @@ def subtract_spectral_line(
         amplitude=parameters.components["amplitude"],
         shift=parameters.components["shift"],
         width=parameters.components["width"],
-        kappa=parameters.components["kappa"]
+        kappa=parameters.components["kappa"],
     )
 
     obs = obs.copy_shallow()
