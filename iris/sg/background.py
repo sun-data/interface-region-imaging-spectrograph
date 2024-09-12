@@ -14,6 +14,7 @@ __all__ = [
     "average",
     "subtract_spectral_line",
     "smooth",
+    "estimate",
 ]
 
 
