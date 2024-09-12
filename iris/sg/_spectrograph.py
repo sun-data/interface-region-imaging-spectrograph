@@ -318,6 +318,9 @@ class SpectrographObservation(
             format="jd",
         ).isot
 
+        where_invalid = self.outputs < -10 * u.DN
+        self.outputs[where_invalid] = np.nan
+
         return self
 
     @classmethod
