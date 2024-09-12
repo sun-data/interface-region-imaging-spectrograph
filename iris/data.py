@@ -229,7 +229,21 @@ def download(
         file = directory / url.name
 
         if overwrite or not file.exists():
-            r = requests.get(url, stream=True)
+
+            r = requests.get(
+                url=url,
+                stream=True,
+                allow_redirects=False,
+            )
+
+            if r.headers["Location"]:
+                url = r.headers["Location"]
+                r = requests.get(
+                    url=url,
+                    stream=True,
+                    allow_redirects=False,
+                )
+
             with open(file, "wb") as f:
                 f.write(r.content)
 
