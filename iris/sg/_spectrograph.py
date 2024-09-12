@@ -60,7 +60,7 @@ class SpectrographObservation(
             wavelength=obs.inputs.wavelength.mean(("detector_x", "detector_y")),
             axis=obs.axis_wavelength,
             spd_min=0 * u.DN,
-            spd_max=np.percentile(
+            spd_max=np.nanpercentile(
                 a=obs.outputs,
                 q=99,
                 axis=(obs.axis_time, obs.axis_detector_x, obs.axis_detector_y),
@@ -316,7 +316,10 @@ class SpectrographObservation(
         self.inputs.time.ndarray = astropy.time.Time(
             val=self.inputs.time.ndarray,
             format="jd",
-        ).isot
+        )
+
+        where_invalid = self.outputs < -10 * u.DN
+        self.outputs[where_invalid] = np.nan
 
         return self
 

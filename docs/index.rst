@@ -74,7 +74,7 @@ and display as a false-color movie.
     velocity_max = +100 * u.km / u.s
 
     # Define the spectral normalization curve
-    spd_max = np.percentile(
+    spd_max = np.nanpercentile(
         a=obs.outputs,
         q=99.5,
         axis=axis_txy,
