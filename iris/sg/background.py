@@ -196,7 +196,7 @@ def fit(
 ) -> na.CartesianNdVectorArray:
     """
     Compute the parameters of :func:`model_total` which best fit `data` using
-    :func:`named_arrays.optimize.minimize_gradient_descent`.
+    the gradient descent method.
 
     Parameters
     ----------
@@ -543,3 +543,101 @@ def smooth(
         proportion=0.2,
     )
     return obs
+
+
+def estimate(
+    obs: na.FunctionArray,
+    axis_time: str,
+    axis_wavelength: str,
+    axis_detector_x: str,
+    axis_detector_y: str,
+) -> na.FunctionArray:
+    """
+    Estimate the background from a given spectrograph observation.
+
+    This function applies :func;`average`, :func:`subtract_spectral_line`,
+    and :func:`smooth` in succession to estimate the background.
+
+    Parameters
+    ----------
+    obs
+        The observation to estimate the background from.
+    axis_time
+        The logical axis corresponding to changing raster number.
+    axis_wavelength
+        The logical axis corresponding to changing wavelength.
+    axis_detector_x
+        The logical axis corresponding the changing position perpendicular to
+        the slit.
+    axis_detector_y
+        The logical axis corresponding to changing position along the slit.
+
+    Examples
+    --------
+
+    Estimate the background from a spectrograph observation
+
+    .. jupyter-execute::
+
+        import matplotlib.pyplot as plt
+        import astropy.units as u
+        import astropy.visualization
+        import named_arrays as na
+        import iris
+
+        # Load a spectrograph observation
+        obs = iris.sg.SpectrographObservation.from_time_range(
+            time_start=astropy.time.Time("2021-09-23T06:00"),
+            time_stop=astropy.time.Time("2021-09-23T07:00"),
+        )
+
+        # Calculate the mean rest wavelength of the
+        # brightest spectral line
+        wavelength_center = obs.wavelength_center.ndarray.mean()
+
+        # Convert wavelength to velocity units
+        obs.inputs = obs.inputs.explicit
+        obs.inputs.wavelength = obs.inputs.wavelength.to(
+            unit=u.km / u.s,
+            equivalencies=u.doppler_optical(wavelength_center),
+        )
+
+        # Subtract the spectral line from the average
+        bg = iris.sg.background.estimate(
+            obs=obs,
+            axis_time=obs.axis_time,
+            axis_wavelength=obs.axis_wavelength,
+            axis_detector_x=obs.axis_detector_x,
+            axis_detector_y=obs.axis_detector_y,
+        )
+
+        # Plot the result
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots()
+            img = na.plt.pcolormesh(
+                bg.inputs.wavelength,
+                bg.inputs.position.y,
+                C=bg.outputs.value,
+            )
+            ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
+            ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
+            fig.colorbar(
+                mappable=img.ndarray.item(),
+                ax=ax,
+                label=f"average spectral radiance ({obs.outputs.unit})",
+            )
+    """
+    avg = average(
+        obs=obs,
+        axis=(axis_time, axis_detector_x),
+    )
+    bg_0 = subtract_spectral_line(
+        obs=avg,
+        axis_wavelength=axis_wavelength,
+    )
+    bg_1 = smooth(
+        obs=bg_0,
+        axis_wavelength=axis_wavelength,
+        axis_detector_y=axis_detector_y,
+    )
+    return bg_1
