@@ -316,7 +316,7 @@ class SpectrographObservation(
         self.inputs.time.ndarray = astropy.time.Time(
             val=self.inputs.time.ndarray,
             format="jd",
-        ).isot
+        )
 
         where_invalid = self.outputs < -10 * u.DN
         self.outputs[where_invalid] = np.nan
