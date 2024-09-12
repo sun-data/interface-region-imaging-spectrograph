@@ -60,7 +60,7 @@ class SpectrographObservation(
             wavelength=obs.inputs.wavelength.mean(("detector_x", "detector_y")),
             axis=obs.axis_wavelength,
             spd_min=0 * u.DN,
-            spd_max=np.percentile(
+            spd_max=np.nanpercentile(
                 a=obs.outputs,
                 q=99,
                 axis=(obs.axis_time, obs.axis_detector_x, obs.axis_detector_y),
