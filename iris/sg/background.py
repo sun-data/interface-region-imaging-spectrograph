@@ -207,6 +207,7 @@ def fit(
     where
         The points in the observation to consider when fitting.
     """
+
     def function(x: na.CartesianNdVectorArray):
         x = x.components
 
@@ -275,15 +276,15 @@ def fit(
 
 
 def average(
-    data: na.AbstractScalar,
+    obs: na.FunctionArray,
     axis: str | tuple[str, ...],
-) -> na.AbstractScalar:
+) -> na.FunctionArray:
     """
     Compute the average along the given axis using :func:`numpy.nanmedian`
 
     Parameters
     ----------
-    data
+    obs
         The observation to be averaged.
     axis
         The logical axis along which to take the average.
@@ -320,9 +321,9 @@ def average(
         with astropy.visualization.quantity_support():
             fig, ax = plt.subplots()
             img = na.plt.pcolormesh(
-                obs.inputs.wavelength.mean(axis),
-                obs.inputs.position.y.mean(axis),
-                C=avg.value,
+                avg.inputs.wavelength
+                avg.inputs.position.y
+                C=avg.outputs.value,
             )
             ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
             ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
@@ -332,4 +333,7 @@ def average(
                 label=f"average spectral radiance ({obs.outputs.unit})",
             )
     """
-    return np.nanmedian(data, axis=axis)
+    obs = obs.copy_shallow()
+    obs.inputs = obs.inputs.mean(axis)
+    obs.outputs = np.nanmedian(obs.outputs, axis=axis)
+    return obs
