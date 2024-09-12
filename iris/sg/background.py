@@ -635,7 +635,7 @@ def estimate(
 
     .. jupyter-execute::
 
-        # Remove background from spectrograph observation
+       # Remove background from spectrograph observation
         obs_nobg = obs - bg
 
         # Select the first raster to plot
@@ -643,16 +643,17 @@ def estimate(
 
         # Plot the original compared to the background-subtracted
         # observation.
-        fig, ax = plt.subplots(
-            ncols=2,
-            sharex=True,
-            sharey=True,
-            constrained_layout=True,
-        )
         with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots(
+                ncols=2,
+                sharex=True,
+                sharey=True,
+                constrained_layout=True,
+            )
             mappable = plt.cm.ScalarMappable(
                 norm=plt.Normalize(vmin=0, vmax=5),
             )
+            ax[0].set_title("original")
             na.plt.pcolormesh(
                 obs.inputs.position.x[index].mean(obs.axis_wavelength),
                 obs.inputs.position.y[index].mean(obs.axis_wavelength),
@@ -661,6 +662,7 @@ def estimate(
                 norm=mappable.norm,
                 cmap=mappable.cmap,
             )
+            ax[1].set_title("corrected")
             na.plt.pcolormesh(
                 obs_nobg.inputs.position.x[index].mean(obs.axis_wavelength),
                 obs_nobg.inputs.position.y[index].mean(obs.axis_wavelength),
@@ -671,8 +673,43 @@ def estimate(
             )
             ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
             ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
-            fig.colorbar(mappable, ax=ax)
-    """
+            fig.colorbar(
+                mappable=mappable,
+                ax=ax,
+                label=f"mean spectral radiance ({obs.outputs.unit:latex_inline})",
+            )
+
+    |
+
+    Plot the original and corrected median spectral line profiles
+
+    .. jupyter-execute::
+
+        # Define the axes to average over
+        axis_txy = (
+            obs.axis_time,
+            obs.axis_detector_x,
+            obs.axis_detector_y,
+        )
+
+        # Plot the result
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots()
+            na.plt.plot(
+                obs.inputs.wavelength.mean(axis=axis_txy),
+                np.nanmedian(obs.outputs, axis=axis_txy),
+                label="original",
+            )
+            na.plt.plot(
+                obs_nobg.inputs.wavelength.mean(axis=axis_txy),
+                np.nanmedian(obs_nobg.outputs, axis=axis_txy),
+                label="corrected",
+            )
+            ax.set_xlabel(f"Doppler velocity ({ax.get_xlabel()})")
+            ax.set_ylabel(f"median spectral radiance ({ax.get_ylabel()})")
+            ax.set_ylim(top=10)
+            ax.legend()
+            """
     avg = average(
         obs=obs,
         axis=(axis_time, axis_detector_x),
