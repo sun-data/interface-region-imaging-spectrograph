@@ -168,17 +168,21 @@ def urls_hek(
         for group in event["groups"]:
 
             url = group["comp_data_url"]
+            url = urlpath.URL(url)
+            url = urlpath.URL(*["data" if p == "data_lmsal" else p for p in url.parts])
+
+            url_str = str(url)
 
             if spectrograph:
-                if "raster" in url:
-                    result.append(urlpath.URL(url))
+                if "raster" in url_str:
+                    result.append(url)
             if sji:
-                if "SJI" in url:
-                    if "deconvolved" in url:
+                if "SJI" in url_str:
+                    if "deconvolved" in url_str:
                         if deconvolved:
-                            result.append(urlpath.URL(url))
+                            result.append(url)
                     else:
-                        result.append(urlpath.URL(url))
+                        result.append(url)
 
     return result
 
@@ -230,19 +234,7 @@ def download(
 
         if overwrite or not file.exists():
 
-            r = requests.get(
-                url=url,
-                stream=True,
-                allow_redirects=False,
-            )
-
-            if r.headers["Location"]:
-                url = r.headers["Location"]
-                r = requests.get(
-                    url=url,
-                    stream=True,
-                    allow_redirects=False,
-                )
+            r = requests.get(url, stream=True)
 
             with open(file, "wb") as f:
                 f.write(r.content)
