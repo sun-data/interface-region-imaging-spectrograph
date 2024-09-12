@@ -635,7 +635,7 @@ def estimate(
 
     .. jupyter-execute::
 
-       # Remove background from spectrograph observation
+        # Remove background from spectrograph observation
         obs_nobg = obs - bg
 
         # Select the first raster to plot
@@ -709,7 +709,7 @@ def estimate(
             ax.set_ylabel(f"median spectral radiance ({ax.get_ylabel()})")
             ax.set_ylim(top=10)
             ax.legend()
-            """
+    """
     avg = average(
         obs=obs,
         axis=(axis_time, axis_detector_x),
