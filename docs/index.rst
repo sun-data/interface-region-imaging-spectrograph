@@ -47,24 +47,10 @@ and display as a false-color movie.
     import iris
 
     # Download a 320-step raster sequence
-    obs = iris.SpectrographObservation.from_time_range(
-        time_start=astropy.time.Time("2021-09-23T02:00"),
-        time_stop=astropy.time.Time("2021-09-23T03:00"),
+    obs = iris.sg.SpectrographObservation.from_time_range(
+        time_start=astropy.time.Time("2017-02-11T04:50"),
+        time_stop=astropy.time.Time("2017-02-11T05:00"),
     )
-
-    # Crop the observation so readthedocs doesn't run out of memory.
-    # This is probably unnecessary on your machine
-    index = {obs.axis_wavelength: slice(75, 150)}
-    obs = dataclasses.replace(
-        obs,
-        inputs=na.TemporalSpectralPositionalVectorArray(
-            time=obs.inputs.time,
-            wavelength=obs.inputs.wavelength[index],
-            position=obs.inputs.position[index],
-        ),
-        outputs=obs.outputs[index],
-    )
-
 
     # Calculate the mean rest wavelength of the
     # brightest spectral line
