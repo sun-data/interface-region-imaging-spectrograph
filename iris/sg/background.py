@@ -12,6 +12,7 @@ __all__ = [
     "model_total",
     "fit",
     "average",
+    "subtract_spectral_line",
 ]
 
 
@@ -122,7 +123,7 @@ def model_total(
         width=width,
         kappa=kappa,
     )
-    bg = model_background(velocity=velocity, bias=bias, slope=slope)(
+    bg = model_background(
         velocity=velocity,
         bias=bias,
         slope=slope,
@@ -334,6 +335,116 @@ def average(
             )
     """
     obs = obs.copy_shallow()
-    obs.inputs = obs.inputs.mean(axis)
+    obs.inputs = na.TemporalSpectralPositionalVectorArray(
+        time=obs.inputs.time.ndarray.mean(),
+        wavelength=obs.inputs.wavelength.mean(axis),
+        position=obs.inputs.position.mean(axis),
+    )
     obs.outputs = np.nanmedian(obs.outputs, axis=axis)
+    return obs
+
+
+def subtract_spectral_line(
+    obs: na.FunctionArray[na.SpectralPositionalVectorArray, na.ScalarArray],
+    axis_wavelength: str,
+) -> na.FunctionArray[na.SpectralPositionalVectorArray, na.ScalarArray]:
+    """
+    Fit `obs` using :func:`fit` and subtract the component from
+    :func:`model_spectral_line`.
+
+    Parameters
+    ----------
+    obs
+        The observation to remove the spectral line from.
+    axis_wavelength
+        The logical axis corresponding to increasing wavelength.
+
+    Examples
+    --------
+
+    Subtract the spectral line from an averaged spectrograph observation.
+
+    .. jupyter-execute::
+
+        import matplotlib.pyplot as plt
+        import astropy.units as u
+        import astropy.visualization
+        import named_arrays as na
+        import iris
+
+        # Load a spectrograph observation
+        obs = iris.sg.SpectrographObservation.from_time_range(
+            time_start=astropy.time.Time("2021-09-23T06:00"),
+            time_stop=astropy.time.Time("2021-09-23T07:00"),
+        )
+
+        # Calculate the mean rest wavelength of the
+        # brightest spectral line
+        wavelength_center = obs.wavelength_center.ndarray.mean()
+
+        # Convert wavelength to velocity units
+        obs.inputs = obs.inputs.explicit
+        obs.inputs.wavelength = obs.inputs.wavelength.to(
+            unit=u.km / u.s,
+            equivalencies=u.doppler_optical(wavelength_center),
+        )
+
+        # Save the time and raster axes
+        axis = (obs.axis_time, obs.axis_detector_x)
+
+        # Compute the average along the time and raster axes
+        avg = iris.sg.background.average(
+            obs=obs,
+            axis=axis,
+        )
+
+        # Subtract the spectral line from the average
+        bg = iris.sg.background.subtract_spectral_line(
+            obs=avg,
+            axis_wavelength=obs.axis_wavelength,
+        )
+
+        # Plot the result
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots()
+            img = na.plt.pcolormesh(
+                bg.inputs.wavelength,
+                bg.inputs.position.y,
+                C=bg.outputs.value,
+            )
+            ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
+            ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
+            fig.colorbar(
+                mappable=img.ndarray.item(),
+                ax=ax,
+                label=f"average spectral radiance ({obs.outputs.unit})",
+            )
+    """
+
+    where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > .7
+
+    velocity = obs.inputs.wavelength[where_crop]
+
+    where = np.abs(velocity) < 150 * u.km / u.s
+
+    data = obs.outputs[where_crop]
+
+    parameters = fit(
+        data=data,
+        velocity=velocity,
+        axis_wavelength=axis_wavelength,
+        where=where
+    )
+
+    model_fit_line = model_spectral_line(
+        velocity=velocity,
+        amplitude=parameters.components["amplitude"],
+        shift=parameters.components["shift"],
+        width=parameters.components["width"],
+        kappa=parameters.components["kappa"]
+    )
+
+    obs = obs.copy_shallow()
+    obs.outputs[where_crop] = data - model_fit_line
+
     return obs
