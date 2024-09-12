@@ -321,8 +321,8 @@ def average(
         with astropy.visualization.quantity_support():
             fig, ax = plt.subplots()
             img = na.plt.pcolormesh(
-                avg.inputs.wavelength
-                avg.inputs.position.y
+                avg.inputs.wavelength,
+                avg.inputs.position.y,
                 C=avg.outputs.value,
             )
             ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
