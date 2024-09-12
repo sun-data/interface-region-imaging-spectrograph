@@ -268,7 +268,6 @@ def fit(
             )
         ),
         max_iterations=10000,
-        callback=callback,
     )
     return result
 
