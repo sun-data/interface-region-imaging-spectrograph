@@ -421,7 +421,7 @@ def subtract_spectral_line(
             )
     """
 
-    where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > .7
+    where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > 0.7
 
     velocity = obs.inputs.wavelength[where_crop]
 
