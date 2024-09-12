@@ -13,6 +13,7 @@ __all__ = [
     "fit",
     "average",
     "subtract_spectral_line",
+    "smooth",
 ]
 
 
@@ -242,10 +243,6 @@ def fit(
     )
     guess = na.CartesianNdVectorArray.from_components(guess)
 
-    def callback(i, x, f, c):
-        if i % 10 == 0:
-            print(f"{i=}\n{x.mean()=}\n{f.mean()=}\n{(~c).sum()=}")
-
     result = na.optimize.minimum_gradient_descent(
         function=function,
         guess=guess,
@@ -411,6 +408,8 @@ def subtract_spectral_line(
                 bg.inputs.wavelength,
                 bg.inputs.position.y,
                 C=bg.outputs.value,
+                vmin=-5,
+                vmax=+5,
             )
             ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
             ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
@@ -447,4 +446,101 @@ def subtract_spectral_line(
     obs = obs.copy_shallow()
     obs.outputs[where_crop] = data - model_fit_line
 
+    return obs
+
+
+def smooth(
+    obs: na.FunctionArray,
+    axis_wavelength: str,
+    axis_detector_y: str,
+) -> na.FunctionArray:
+    """
+    Smooth the given observation using
+    :func:`named_arrays.ndfilters.trimmed_mean_filter`.
+
+    Parameters
+    ----------
+    obs
+        The observation to be smoothed.
+    axis_wavelength
+        The logical axis corresponding to increasing wavelength.
+    axis_detector_y
+        The logical axis corresponding to increasing position along the slit.
+
+    Examples
+    --------
+
+    Compute a smoothed version of an average spectrograph observation.
+
+    .. jupyter-execute::
+
+        import matplotlib.pyplot as plt
+        import astropy.units as u
+        import astropy.visualization
+        import named_arrays as na
+        import iris
+
+        # Load a spectrograph observation
+        obs = iris.sg.SpectrographObservation.from_time_range(
+            time_start=astropy.time.Time("2021-09-23T06:00"),
+            time_stop=astropy.time.Time("2021-09-23T07:00"),
+        )
+
+        # Calculate the mean rest wavelength of the
+        # brightest spectral line
+        wavelength_center = obs.wavelength_center.ndarray.mean()
+
+        # Convert wavelength to velocity units
+        obs.inputs = obs.inputs.explicit
+        obs.inputs.wavelength = obs.inputs.wavelength.to(
+            unit=u.km / u.s,
+            equivalencies=u.doppler_optical(wavelength_center),
+        )
+
+        # Save the time and raster axes
+        axis = (obs.axis_time, obs.axis_detector_x)
+
+        # Compute the average along the time and raster axes
+        avg = iris.sg.background.average(
+            obs=obs,
+            axis=axis,
+        )
+
+        # Subtract the spectral line from the average
+        bg = iris.sg.background.smooth(
+            obs=avg,
+            axis_wavelength=obs.axis_wavelength,
+            axis_detector_y=obs.axis_detector_y,
+        )
+
+        # Plot the result
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots()
+            img = na.plt.pcolormesh(
+                bg.inputs.wavelength,
+                bg.inputs.position.y,
+                C=bg.outputs.value,
+            )
+            ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
+            ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
+            fig.colorbar(
+                mappable=img.ndarray.item(),
+                ax=ax,
+                label=f"average spectral radiance ({obs.outputs.unit})",
+            )
+    """
+    obs.outputs = na.ndfilters.trimmed_mean_filter(
+        array=obs.outputs,
+        size={axis_wavelength: 21},
+        where=np.isfinite(obs.outputs),
+        mode="truncate",
+        proportion=0.2,
+    )
+    obs.outputs = na.ndfilters.trimmed_mean_filter(
+        array=obs.outputs,
+        size={axis_detector_y: 21},
+        where=np.isfinite(obs.outputs),
+        mode="truncate",
+        proportion=0.2,
+    )
     return obs
