@@ -318,7 +318,7 @@ class SpectrographObservation(
             format="jd",
         )
         t.format = "isot"
-        self.inputs.time.ndarray= t
+        self.inputs.time.ndarray = t
 
         where_invalid = self.outputs < -10 * u.DN
         self.outputs[where_invalid] = np.nan
