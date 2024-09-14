@@ -74,7 +74,7 @@ def average(
     """
     obs = obs.copy_shallow()
     obs.inputs = na.TemporalSpectralPositionalVectorArray(
-        time=obs.inputs.time.ndarrayj.jd.mean(),
+        time=obs.inputs.time.ndarray.jd.mean(),
         wavelength=obs.inputs.wavelength.mean(axis),
         position=obs.inputs.position.mean(axis),
     )
