@@ -720,7 +720,8 @@ def estimate(
     .. jupyter-execute::
 
         # Remove background from spectrograph observation
-        obs_nobg = obs - bg
+        obs_nobg = obs.copy_shallow()
+        obs_nobg.outputs = obs.outputs - bg.outputs
 
         # Select the first raster to plot
         index = {obs.axis_time: 0}
