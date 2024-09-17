@@ -22,4 +22,4 @@ pip install interface-region-imaging-spectrograph
 Download spectrograph rasters from a specified time range and plot the Si IV 1403 Angstrom
 spectral line as a false-color image.
 
-[![obs](https://interface-region-imaging-spectrograph.readthedocs.io/en/latest/_images/iris.sg.SpectrographObservation_0_0.png)](https://interface-region-imaging-spectrograph.readthedocs.io/en/latest/_autosummary/iris.sg.SpectrographObservation.html#iris.sg.SpectrographObservation)
+[![obs](https://interface-region-imaging-spectrograph.readthedocs.io/en/latest/_images/iris.sg.SpectrographObservation_0_1.png)](https://interface-region-imaging-spectrograph.readthedocs.io/en/latest/_autosummary/iris.sg.SpectrographObservation.html#iris.sg.SpectrographObservation)
