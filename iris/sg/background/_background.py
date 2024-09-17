@@ -74,7 +74,7 @@ def average(
     """
     obs = obs.copy_shallow()
     obs.inputs = na.TemporalSpectralPositionalVectorArray(
-        time=obs.inputs.time.ndarray.mean(),
+        time=obs.inputs.time.ndarray.jd.mean(),
         wavelength=obs.inputs.wavelength.mean(axis),
         position=obs.inputs.position.mean(axis),
     )
@@ -720,7 +720,8 @@ def estimate(
     .. jupyter-execute::
 
         # Remove background from spectrograph observation
-        obs_nobg = obs - bg
+        obs_nobg = obs.copy_shallow()
+        obs_nobg.outputs = obs.outputs - bg.outputs
 
         # Select the first raster to plot
         index = {obs.axis_time: 0}

@@ -313,10 +313,12 @@ class SpectrographObservation(
             key_center = f"TWAVE{index_window}"
             self.wavelength_center[index] = hdul[0].header[key_center] * u.AA
 
-        self.inputs.time.ndarray = astropy.time.Time(
+        t = astropy.time.Time(
             val=self.inputs.time.ndarray,
             format="jd",
         )
+        t.format = "isot"
+        self.inputs.time.ndarray = t
 
         where_invalid = self.outputs < -10 * u.DN
         self.outputs[where_invalid] = np.nan
