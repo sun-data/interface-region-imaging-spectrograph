@@ -8,9 +8,7 @@ __all__ = [
 ]
 
 
-def effective_area(
-    wavelength: u.Quantity | na.AbstractScalar
-) -> na.AbstractScalar:
+def effective_area(wavelength: u.Quantity | na.AbstractScalar) -> na.AbstractScalar:
     """
     Load the effective area of the spectrograph.
 
@@ -65,7 +63,7 @@ def effective_area(
     struct_v1 = scipy.io.readsav(file_v1)["p0"]
 
     wavelength_v1 = struct_v1["LAMBDA"][0] * u.nm
-    area_v1 = struct_v1["AREA_SG"][0] * u.cm ** 2
+    area_v1 = struct_v1["AREA_SG"][0] * u.cm**2
 
     axis = "_dummy"
     axes = ("channel", axis)
