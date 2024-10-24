@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Sequence
 import pytest
 import pathlib
-import urlpath
 import astropy.time
 import iris
 
@@ -63,7 +62,7 @@ def test_urls_hek(
     assert isinstance(result, list)
     assert len(result) > 0
     for url in result:
-        assert isinstance(url, urlpath.URL)
+        assert isinstance(url, str)
 
 
 @pytest.mark.parametrize(
@@ -79,7 +78,7 @@ def test_urls_hek(
 @pytest.mark.parametrize("directory", [None])
 @pytest.mark.parametrize("overwrite", [False])
 def test_download(
-    urls: list[urlpath.URL],
+    urls: list[str],
     directory: None | pathlib.Path,
     overwrite: bool,
 ):
