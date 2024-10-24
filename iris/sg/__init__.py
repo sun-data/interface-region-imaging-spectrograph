@@ -8,5 +8,6 @@ from ._spectrograph import SpectrographObservation
 
 __all__ = [
     "background",
+    "effective_area",
     "SpectrographObservation",
 ]
