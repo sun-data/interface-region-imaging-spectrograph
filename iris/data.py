@@ -7,7 +7,6 @@ from typing import Sequence
 import pathlib
 import shutil
 import requests
-import urlpath
 import astropy.time
 
 __all__ = [
@@ -97,7 +96,7 @@ def urls_hek(
     sji: bool = True,
     deconvolved: bool = False,
     num_retry: int = 5,
-) -> list[urlpath.URL]:
+) -> list[str]:
     """
     Find a list of URLs to download matching the given parameters.
 
@@ -168,8 +167,7 @@ def urls_hek(
         for group in event["groups"]:
 
             url = group["comp_data_url"]
-            url = urlpath.URL(url)
-            url = urlpath.URL(*["data" if p == "data_lmsal" else p for p in url.parts])
+            url = url.replace("data_lmsal", "data")
 
             url_str = str(url)
 
@@ -188,7 +186,7 @@ def urls_hek(
 
 
 def download(
-    urls: list[urlpath.URL],
+    urls: list[str],
     directory: None | pathlib.Path = None,
     overwrite: bool = False,
 ) -> list[pathlib.Path]:
@@ -230,7 +228,7 @@ def download(
     result = []
     for url in urls:
 
-        file = directory / url.name
+        file = directory / url.split("/")[~0]
 
         if overwrite or not file.exists():
             r = requests.get(url, stream=True)

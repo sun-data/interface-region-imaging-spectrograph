@@ -16,7 +16,6 @@ classifiers = [
 dependencies = [
     "astropy",
     "requests",
-    "urlpath",
     "named-arrays==0.10.0",
 ]
 dynamic = ["version"]
