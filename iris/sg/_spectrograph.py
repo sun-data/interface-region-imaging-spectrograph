@@ -70,9 +70,6 @@ class SpectrographObservation(
             wavelength_max=wavelength_max,
         )
 
-        # Isolate the angular position of each RGB point
-        position = obs.inputs.position.mean(obs.axis_wavelength)
-
         # Isolate the first raster of the observation
         index = {obs.axis_time: 0}
 
@@ -85,7 +82,7 @@ class SpectrographObservation(
                 constrained_layout=True,
             )
             na.plt.pcolormesh(
-                position[index],
+                obs.inputs.position[index],
                 C=rgb[index],
                 axis_rgb=obs.axis_wavelength,
                 ax=ax[0],
