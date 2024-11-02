@@ -73,10 +73,11 @@ def average(
             )
     """
     obs = obs.copy_shallow()
+    shape = obs.shape
     obs.inputs = na.TemporalSpectralPositionalVectorArray(
         time=obs.inputs.time.ndarray.jd.mean(),
-        wavelength=obs.inputs.wavelength.mean(axis),
-        position=obs.inputs.position.mean(axis),
+        wavelength=obs.inputs.wavelength.broadcast_to(shape).mean(axis),
+        position=obs.inputs.position.broadcast_to(shape).mean(axis),
     )
     obs.outputs = np.nanmedian(obs.outputs, axis=axis)
     return obs
