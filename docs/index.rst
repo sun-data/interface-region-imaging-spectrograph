@@ -3,7 +3,7 @@ Introduction
 
 The `Interface Region Imaging Spectograph <iris.lmsal.com>`_ (IRIS) is a NASA
 Small Explorer satellite which has been taking continuous ultraviolet images of
-the Sun since 2013.
+the Sun since 2013 :cite:p:`DePontieu2014`.
 
 This Python package aims to represent IRIS imagery using :mod:`named_arrays`,
 a named tensor implementation with :class:`astropy.units.Quantity` support.
