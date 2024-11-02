@@ -57,7 +57,7 @@ class SpectrographObservation(
         # red/green/blue channels
         rgb, colorbar = na.colorsynth.rgb_and_colorbar(
             spd=obs.outputs,
-            wavelength=obs.inputs.wavelength.mean(("detector_x", "detector_y")),
+            wavelength=obs.inputs.wavelength,
             axis=obs.axis_wavelength,
             spd_min=0 * u.DN,
             spd_max=np.nanpercentile(

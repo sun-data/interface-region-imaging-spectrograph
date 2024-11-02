@@ -61,7 +61,7 @@ and display as a false-color movie.
 
     # Take the mean of the wavelength over the spatial
     # and temporal axes since it is constant
-    wavelength = obs.inputs.wavelength.mean(axis_txy)
+    wavelength = obs.inputs.wavelength.mean(obs.axis_time)
 
     # Convert to Doppler velocity
     velocity = wavelength.to(
