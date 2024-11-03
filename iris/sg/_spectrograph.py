@@ -57,7 +57,7 @@ class SpectrographObservation(
         # red/green/blue channels
         rgb, colorbar = na.colorsynth.rgb_and_colorbar(
             spd=obs.outputs,
-            wavelength=obs.inputs.wavelength.mean(("detector_x", "detector_y")),
+            wavelength=obs.inputs.wavelength.mean(obs.axis_time),
             axis=obs.axis_wavelength,
             spd_min=0 * u.DN,
             spd_max=np.nanpercentile(
@@ -69,9 +69,6 @@ class SpectrographObservation(
             wavelength_min=wavelength_min,
             wavelength_max=wavelength_max,
         )
-
-        # Isolate the angular position of each RGB point
-        position = obs.inputs.position.mean(obs.axis_wavelength)
 
         # Isolate the first raster of the observation
         index = {obs.axis_time: 0}
@@ -85,7 +82,7 @@ class SpectrographObservation(
                 constrained_layout=True,
             )
             na.plt.pcolormesh(
-                position[index],
+                obs.inputs.position[index],
                 C=rgb[index],
                 axis_rgb=obs.axis_wavelength,
                 ax=ax[0],

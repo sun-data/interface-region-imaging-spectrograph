@@ -73,10 +73,11 @@ def average(
             )
     """
     obs = obs.copy_shallow()
+    shape = obs.shape
     obs.inputs = na.TemporalSpectralPositionalVectorArray(
         time=obs.inputs.time.ndarray.jd.mean(),
-        wavelength=obs.inputs.wavelength.mean(axis),
-        position=obs.inputs.position.mean(axis),
+        wavelength=obs.inputs.wavelength.broadcast_to(shape).mean(axis),
+        position=obs.inputs.position.broadcast_to(shape).mean(axis),
     )
     obs.outputs = np.nanmedian(obs.outputs, axis=axis)
     return obs
@@ -740,8 +741,8 @@ def estimate(
             )
             ax[0].set_title("original")
             na.plt.pcolormesh(
-                obs.inputs.position.x[index].mean(obs.axis_wavelength),
-                obs.inputs.position.y[index].mean(obs.axis_wavelength),
+                obs.inputs.position.x[index],
+                obs.inputs.position.y[index],
                 C=np.nanmean(obs.outputs.value[index], axis=obs.axis_wavelength),
                 ax=ax[0],
                 norm=mappable.norm,
@@ -749,8 +750,8 @@ def estimate(
             )
             ax[1].set_title("corrected")
             na.plt.pcolormesh(
-                obs_nobg.inputs.position.x[index].mean(obs.axis_wavelength),
-                obs_nobg.inputs.position.y[index].mean(obs.axis_wavelength),
+                obs_nobg.inputs.position.x[index],
+                obs_nobg.inputs.position.y[index],
                 C=np.nanmean(obs_nobg.outputs.value[index], axis=obs.axis_wavelength),
                 ax=ax[1],
                 norm=mappable.norm,
@@ -781,12 +782,12 @@ def estimate(
         with astropy.visualization.quantity_support():
             fig, ax = plt.subplots()
             na.plt.plot(
-                obs.inputs.wavelength.mean(axis=axis_txy),
+                obs.inputs.wavelength.mean(obs.axis_time),
                 np.nanmedian(obs.outputs, axis=axis_txy),
                 label="original",
             )
             na.plt.plot(
-                obs_nobg.inputs.wavelength.mean(axis=axis_txy),
+                obs_nobg.inputs.wavelength.mean(obs.axis_time),
                 np.nanmedian(obs_nobg.outputs, axis=axis_txy),
                 label="corrected",
             )

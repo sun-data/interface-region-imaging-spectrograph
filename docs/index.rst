@@ -61,7 +61,7 @@ and display as a false-color movie.
 
     # Take the mean of the wavelength over the spatial
     # and temporal axes since it is constant
-    wavelength = obs.inputs.wavelength.mean(axis_txy)
+    wavelength = obs.inputs.wavelength.mean(obs.axis_time)
 
     # Convert to Doppler velocity
     velocity = wavelength.to(
@@ -92,9 +92,6 @@ and display as a false-color movie.
         wavelength_max=velocity_max,
     )
 
-    # Isolate the angular position of each RGB point
-    position = obs.inputs.position.mean(obs.axis_wavelength)
-
     # Display the result as an RGB movie
     with astropy.visualization.quantity_support():
         fig, ax = plt.subplots(
@@ -105,8 +102,8 @@ and display as a false-color movie.
         )
         ani = na.plt.pcolormovie(
             obs.inputs.time,
-            position.x,
-            position.y,
+            obs.inputs.position.x,
+            obs.inputs.position.y,
             C=rgb,
             axis_time=obs.axis_time,
             axis_rgb=obs.axis_wavelength,
@@ -129,6 +126,14 @@ and display as a false-color movie.
 
     plt.close(fig)
     IPython.display.HTML(ani.to_jshtml())
+
+
+References
+==========
+
+.. bibliography::
+
+|
 
 
 Indices and tables
