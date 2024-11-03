@@ -782,12 +782,12 @@ def estimate(
         with astropy.visualization.quantity_support():
             fig, ax = plt.subplots()
             na.plt.plot(
-                obs.inputs.wavelength.mean(axis=axis_txy),
+                obs.inputs.wavelength.mean(obs.axis_time),
                 np.nanmedian(obs.outputs, axis=axis_txy),
                 label="original",
             )
             na.plt.plot(
-                obs_nobg.inputs.wavelength.mean(axis=axis_txy),
+                obs_nobg.inputs.wavelength.mean(obs.axis_time),
                 np.nanmedian(obs_nobg.outputs, axis=axis_txy),
                 label="corrected",
             )
