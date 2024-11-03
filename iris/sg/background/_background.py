@@ -741,8 +741,8 @@ def estimate(
             )
             ax[0].set_title("original")
             na.plt.pcolormesh(
-                obs.inputs.position.x[index].mean(obs.axis_wavelength),
-                obs.inputs.position.y[index].mean(obs.axis_wavelength),
+                obs.inputs.position.x[index],
+                obs.inputs.position.y[index],
                 C=np.nanmean(obs.outputs.value[index], axis=obs.axis_wavelength),
                 ax=ax[0],
                 norm=mappable.norm,
@@ -750,8 +750,8 @@ def estimate(
             )
             ax[1].set_title("corrected")
             na.plt.pcolormesh(
-                obs_nobg.inputs.position.x[index].mean(obs.axis_wavelength),
-                obs_nobg.inputs.position.y[index].mean(obs.axis_wavelength),
+                obs_nobg.inputs.position.x[index],
+                obs_nobg.inputs.position.y[index],
                 C=np.nanmean(obs_nobg.outputs.value[index], axis=obs.axis_wavelength),
                 ax=ax[1],
                 norm=mappable.norm,
