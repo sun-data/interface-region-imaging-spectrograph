@@ -128,6 +128,14 @@ and display as a false-color movie.
     IPython.display.HTML(ani.to_jshtml())
 
 
+References
+==========
+
+.. bibliography::
+
+|
+
+
 Indices and tables
 ==================
 
