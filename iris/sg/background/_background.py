@@ -350,17 +350,17 @@ def fit(
         # Plot the average data and model
         with astropy.visualization.quantity_support():
             fig, ax = plt.subplots()
-            na.plt.stairs(
+            na.plt.plot(
                 velocity.mean(obs.axis_detector_y),
                 data.mean(obs.axis_detector_y),
                 label="data",
             )
-            na.plt.stairs(
+            na.plt.plot(
                 velocity.mean(obs.axis_detector_y),
                 data_fit.mean(obs.axis_detector_y),
                 label="fit",
             )
-            na.plt.stairs(
+            na.plt.plot(
                 velocity.mean(obs.axis_detector_y),
                 (data - data_fit).mean(obs.axis_detector_y),
                 label="difference"
