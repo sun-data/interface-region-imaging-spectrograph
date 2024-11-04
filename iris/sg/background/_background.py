@@ -313,8 +313,15 @@ def fit(
         # brightest spectral line
         wavelength_center = avg.wavelength_center.ndarray.mean()
 
+        # Interpolate wavelength samples onto cell centers
+        wavelength = avg.inputs.wavelength
+        for a in wavelength.shape:
+            lower = {a: slice(None, ~0)}
+            upper = {a: slice(+1, None)}
+            wavelength = (wavelength[lower] + wavelength[upper]) / 2
+
         # Convert wavelength to velocity units
-        velocity = avg.inputs.wavelength.to(
+        velocity = wavelength.to(
             unit=u.km / u.s,
             equivalencies=u.doppler_optical(wavelength_center),
         )
