@@ -399,7 +399,7 @@ class SpectrographObservation(
                     ),
                 ),
             ),
-            shape_wcs=shape_wcs,
+            shape_wcs={a: shape_wcs[a] + 1 for a in shape_wcs},
         )
 
         shape = na.broadcast_shapes(shape_base, shape_wcs)

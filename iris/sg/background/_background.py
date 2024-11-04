@@ -73,7 +73,7 @@ def average(
             )
     """
     obs = obs.copy_shallow()
-    shape = obs.shape
+    shape = obs.inputs.shape
     obs.inputs = na.TemporalSpectralPositionalVectorArray(
         time=obs.inputs.time.ndarray.jd.mean(),
         wavelength=obs.inputs.wavelength.broadcast_to(shape).mean(axis),
@@ -313,8 +313,15 @@ def fit(
         # brightest spectral line
         wavelength_center = avg.wavelength_center.ndarray.mean()
 
+        # Interpolate wavelength samples onto cell centers
+        wavelength = avg.inputs.wavelength
+        for a in wavelength.shape:
+            lower = {a: slice(None, ~0)}
+            upper = {a: slice(+1, None)}
+            wavelength = (wavelength[lower] + wavelength[upper]) / 2
+
         # Convert wavelength to velocity units
-        velocity = avg.inputs.wavelength.to(
+        velocity = wavelength.to(
             unit=u.km / u.s,
             equivalencies=u.doppler_optical(wavelength_center),
         )
@@ -507,7 +514,11 @@ def subtract_spectral_line(
 
     where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > 0.7
 
-    velocity = obs.inputs.wavelength[where_crop]
+    velocity = obs.inputs.wavelength
+    for a in velocity.shape:
+        velocity = (velocity[{a: slice(None, ~0)}] + velocity[{a: slice(1, None)}]) / 2
+
+    velocity = velocity[where_crop]
 
     where = np.abs(velocity) < 150 * u.km / u.s
 
@@ -781,12 +792,12 @@ def estimate(
         # Plot the result
         with astropy.visualization.quantity_support():
             fig, ax = plt.subplots()
-            na.plt.plot(
+            na.plt.stairs(
                 obs.inputs.wavelength.mean(obs.axis_time),
                 np.nanmedian(obs.outputs, axis=axis_txy),
                 label="original",
             )
-            na.plt.plot(
+            na.plt.stairs(
                 obs_nobg.inputs.wavelength.mean(obs.axis_time),
                 np.nanmedian(obs_nobg.outputs, axis=axis_txy),
                 label="corrected",
