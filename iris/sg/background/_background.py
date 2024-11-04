@@ -343,17 +343,17 @@ def fit(
         # Plot the average data and model
         with astropy.visualization.quantity_support():
             fig, ax = plt.subplots()
-            na.plt.plot(
+            na.plt.stairs(
                 velocity.mean(obs.axis_detector_y),
                 data.mean(obs.axis_detector_y),
                 label="data",
             )
-            na.plt.plot(
+            na.plt.stairs(
                 velocity.mean(obs.axis_detector_y),
                 data_fit.mean(obs.axis_detector_y),
                 label="fit",
             )
-            na.plt.plot(
+            na.plt.stairs(
                 velocity.mean(obs.axis_detector_y),
                 (data - data_fit).mean(obs.axis_detector_y),
                 label="difference"
@@ -781,12 +781,12 @@ def estimate(
         # Plot the result
         with astropy.visualization.quantity_support():
             fig, ax = plt.subplots()
-            na.plt.plot(
+            na.plt.stairs(
                 obs.inputs.wavelength.mean(obs.axis_time),
                 np.nanmedian(obs.outputs, axis=axis_txy),
                 label="original",
             )
-            na.plt.plot(
+            na.plt.stairs(
                 obs_nobg.inputs.wavelength.mean(obs.axis_time),
                 np.nanmedian(obs_nobg.outputs, axis=axis_txy),
                 label="corrected",

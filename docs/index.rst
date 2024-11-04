@@ -1,7 +1,7 @@
 Introduction
 ============
 
-The `Interface Region Imaging Spectograph <iris.lmsal.com>`_ (IRIS) is a NASA
+The `Interface Region Imaging Spectograph <https://iris.lmsal.com>`_ (IRIS) is a NASA
 Small Explorer satellite which has been taking continuous ultraviolet images of
 the Sun since 2013 :cite:p:`DePontieu2014`.
 
