@@ -73,7 +73,7 @@ def average(
             )
     """
     obs = obs.copy_shallow()
-    shape = obs.shape
+    shape = obs.inputs.shape
     obs.inputs = na.TemporalSpectralPositionalVectorArray(
         time=obs.inputs.time.ndarray.jd.mean(),
         wavelength=obs.inputs.wavelength.broadcast_to(shape).mean(axis),
@@ -507,7 +507,11 @@ def subtract_spectral_line(
 
     where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > 0.7
 
-    velocity = obs.inputs.wavelength[where_crop]
+    velocity = obs.inputs.wavelength
+    for a in velocity.shape:
+        velocity = (velocity[{a: slice(None, ~0)}] + velocity[{a: slice(1, None)}]) / 2
+
+    velocity = velocity[where_crop]
 
     where = np.abs(velocity) < 150 * u.km / u.s
 
