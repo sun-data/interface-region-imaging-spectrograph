@@ -417,7 +417,7 @@ class SpectrographObservation(
         shape = na.broadcast_shapes(shape_base, shape_wcs)
         outputs = na.ScalarArray.empty(shape) << u.DN
 
-        shape_timedelta = shape_base | {axis_wavelength: shape_wcs[axis_wavelength]}
+        shape_timedelta = shape_base | {axis_detector_x: shape_wcs[axis_detector_x]}
         timedelta = na.ScalarArray.empty(shape_timedelta) * u.s
 
         wavelength_center = na.ScalarArray.empty(shape_base) << u.AA
