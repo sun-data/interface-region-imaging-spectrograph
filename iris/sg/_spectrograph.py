@@ -101,6 +101,11 @@ class SpectrographObservation(
             ax[1].set_ylim(wavelength_min, wavelength_max)
     """
 
+    timedelta: u.Quantity | na.AbstractScalar = 0 * u.s
+    """
+    The exposure time for each frame in the observation.
+    """
+
     wavelength_center: None | u.Quantity | na.AbstractScalar = None
     """
     TThe rest wavelength of the dominant spectral line in the observation.
@@ -270,8 +275,13 @@ class SpectrographObservation(
 
             hdul = astropy.io.fits.open(file)
             hdu = hdul[index_window]
+            hdu_aux = hdul[~1]
 
-            wcs = astropy.wcs.WCS(hdu).wcs
+            detector_type = hdul[0].header[f"TDET{index_window}"]
+
+            key_timedelta = "EXPTIMEF" if "FUV" in detector_type else "EXPTIMEN"
+            timedelta = hdu_aux.data[..., hdu_aux.header[key_timedelta]] << u.s
+            self.timedelta[index] = na.ScalarArray(timedelta, axis_detector_x)
 
             self.outputs[index] = na.ScalarArray(
                 ndarray=hdu.data << u.DN,
@@ -280,6 +290,8 @@ class SpectrographObservation(
 
             time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
             self.inputs.time[index] = time
+
+            wcs = astropy.wcs.WCS(hdu).wcs
 
             crval = self.inputs.crval
             crval.wavelength[index] = wcs.crval[~iw] << u.m
@@ -405,11 +417,15 @@ class SpectrographObservation(
         shape = na.broadcast_shapes(shape_base, shape_wcs)
         outputs = na.ScalarArray.empty(shape) << u.DN
 
+        shape_timedelta = shape_base | {axis_wavelength: shape_wcs[axis_wavelength]}
+        timedelta = na.ScalarArray.empty(shape_timedelta) * u.s
+
         wavelength_center = na.ScalarArray.empty(shape_base) << u.AA
 
         return cls(
             inputs=inputs,
             outputs=outputs,
+            timedelta=timedelta,
             wavelength_center=wavelength_center,
             axis_time=axis_time,
             axis_wavelength=axis_wavelength,
