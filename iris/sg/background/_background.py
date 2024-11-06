@@ -314,11 +314,7 @@ def fit(
         wavelength_center = avg.wavelength_center.ndarray.mean()
 
         # Interpolate wavelength samples onto cell centers
-        wavelength = avg.inputs.wavelength
-        for a in wavelength.shape:
-            lower = {a: slice(None, ~0)}
-            upper = {a: slice(+1, None)}
-            wavelength = (wavelength[lower] + wavelength[upper]) / 2
+        wavelength = avg.inputs.wavelength.cell_centers(obs.axis_wavelength)
 
         # Convert wavelength to velocity units
         velocity = wavelength.to(
@@ -514,10 +510,7 @@ def subtract_spectral_line(
 
     where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > 0.7
 
-    velocity = obs.inputs.wavelength
-    for a in velocity.shape:
-        velocity = (velocity[{a: slice(None, ~0)}] + velocity[{a: slice(1, None)}]) / 2
-
+    velocity = obs.inputs.wavelength.cell_centers(axis_wavelength)
     velocity = velocity[where_crop]
 
     where = np.abs(velocity) < 150 * u.km / u.s
