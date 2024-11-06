@@ -314,7 +314,7 @@ def fit(
         wavelength_center = avg.wavelength_center.ndarray.mean()
 
         # Interpolate wavelength samples onto cell centers
-        wavelength = avg.inputs.wavelength.cell_centers(obs.axis_wavelength)
+        wavelength = avg.inputs.wavelength.cell_centers()
 
         # Convert wavelength to velocity units
         velocity = wavelength.to(
