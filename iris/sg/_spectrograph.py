@@ -438,8 +438,7 @@ class SpectrographObservation(
     @property
     def radiance(self) -> Self:
         """
-        Convert :attr:`outputs` to radiometric units using
-        :func:`iris.sg.effective_area`.
+        Convert to radiometric units using :func:`iris.sg.effective_area`.
         """
 
         wavelength = self.inputs.wavelength
