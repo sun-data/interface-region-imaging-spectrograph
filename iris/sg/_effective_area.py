@@ -4,8 +4,22 @@ import named_arrays as na
 import iris
 
 __all__ = [
+    "gain",
+    "width_slit",
     "effective_area",
 ]
+
+gain = 12 * u.photon / u.DN
+"""
+The conversion factor between counts and photons measured by the sensor
+:cite:p:`Wulser2018`.
+"""
+
+
+width_slit = 1 / 3 * u.arcsec
+"""
+The angular subtent of the spectrographic slit.
+"""
 
 
 def effective_area(wavelength: u.Quantity | na.AbstractScalar) -> na.AbstractScalar:

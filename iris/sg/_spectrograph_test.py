@@ -1,4 +1,6 @@
 import pytest
+import numpy as np
+import astropy.units as u
 import astropy.time
 import iris
 
@@ -25,3 +27,9 @@ class TestSpectrographObservation:
 
     def test_axis_detector_y(self, array: iris.sg.SpectrographObservation):
         assert isinstance(array.axis_detector_y, str)
+
+    def test_radiance(self, array: iris.sg.SpectrographObservation):
+        result = array.radiance
+        assert isinstance(result, iris.sg.SpectrographObservation)
+        assert np.all(result.inputs == array.inputs)
+        assert np.nansum(result.outputs) > 0 * u.erg / (u.cm**2 * u.sr * u.s * u.nm)

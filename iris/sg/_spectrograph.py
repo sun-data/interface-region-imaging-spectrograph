@@ -1,7 +1,9 @@
+from typing_extensions import Self
 import dataclasses
 import pathlib
 import numpy as np
 import astropy.units as u
+import astropy.constants
 import astropy.time
 import astropy.wcs
 import astropy.io.fits
@@ -431,4 +433,42 @@ class SpectrographObservation(
             axis_wavelength=axis_wavelength,
             axis_detector_x=axis_detector_x,
             axis_detector_y=axis_detector_y,
+        )
+
+    @property
+    def radiance(self) -> Self:
+        """
+        Convert to radiometric units using :func:`iris.sg.effective_area`.
+        """
+
+        wavelength = self.inputs.wavelength
+
+        lower = {self.axis_wavelength: slice(None, ~0)}
+        upper = {self.axis_wavelength: slice(+1, None)}
+        wavelength = (wavelength[lower] + wavelength[upper]) / 2
+
+        energy = astropy.constants.h * astropy.constants.c / wavelength / u.ph
+
+        gain = iris.sg.gain
+
+        area_eff = iris.sg.effective_area(wavelength)
+
+        pix_xy = np.diff(self.inputs.position, axis=self.axis_detector_y).length
+        pix_xy = pix_xy.mean(self.axis_detector_x)
+
+        pix_lambda = np.diff(self.inputs.wavelength, axis=self.axis_wavelength)
+
+        t_exp = self.timedelta
+
+        w_slit = iris.sg.width_slit
+
+        factor = energy * gain / (area_eff * pix_xy * pix_lambda * t_exp * w_slit)
+
+        outputs = self.outputs * factor
+
+        outputs = outputs.to(u.erg / (u.cm**2 * u.sr * u.nm * u.s))
+
+        return dataclasses.replace(
+            self,
+            outputs=outputs,
         )
