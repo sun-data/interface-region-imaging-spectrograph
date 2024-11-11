@@ -55,21 +55,11 @@ class SpectrographObservation(
         wavelength_min = wavelength_center - 0.5 * u.AA
         wavelength_max = wavelength_center + 0.5 * u.AA
 
-        # Convert the spectral radiance to
-        # red/green/blue channels
-        rgb, colorbar = na.colorsynth.rgb_and_colorbar(
-            spd=obs.outputs,
-            wavelength=obs.inputs.wavelength.mean(obs.axis_time),
-            axis=obs.axis_wavelength,
-            spd_min=0 * u.DN,
-            spd_max=np.nanpercentile(
-                a=obs.outputs,
-                q=99,
-                axis=(obs.axis_time, obs.axis_detector_x, obs.axis_detector_y),
-            ),
-            # spd_norm=lambda x: np.nan_to_num(np.sqrt(x)),
-            wavelength_min=wavelength_min,
-            wavelength_max=wavelength_max,
+        # Define the spectral normalization curve
+        vmax = np.nanpercentile(
+            a=obs.outputs,
+            q=99,
+            axis=(obs.axis_time, obs.axis_detector_x, obs.axis_detector_y),
         )
 
         # Isolate the first raster of the observation
@@ -83,11 +73,15 @@ class SpectrographObservation(
                 gridspec_kw=dict(width_ratios=[.9,.1]),
                 constrained_layout=True,
             )
-            na.plt.pcolormesh(
-                obs.inputs.position[index],
-                C=rgb[index],
-                axis_rgb=obs.axis_wavelength,
+            colorbar = na.plt.rgbmesh(
+                obs.inputs[index],
+                C=obs.outputs[index],
+                axis_wavelength=obs.axis_wavelength,
                 ax=ax[0],
+                vmin=0 * u.DN,
+                vmax=vmax,
+                wavelength_min=wavelength_min,
+                wavelength_max=wavelength_max,
             )
             na.plt.pcolormesh(
                 C=colorbar,
