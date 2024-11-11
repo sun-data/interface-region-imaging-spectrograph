@@ -37,7 +37,6 @@ and display as a false-color movie.
 .. jupyter-execute::
 
     import IPython.display
-    import dataclasses
     import numpy as np
     import matplotlib.pyplot as plt
     import astropy.units as u
@@ -56,15 +55,11 @@ and display as a false-color movie.
     # brightest spectral line
     wavelength_center = obs.wavelength_center.ndarray.mean()
 
-    # Define a tuple of the temporal and spatial axes
-    axis_txy = (obs.axis_time, obs.axis_detector_x, obs.axis_detector_y)
-
-    # Take the mean of the wavelength over the spatial
-    # and temporal axes since it is constant
-    wavelength = obs.inputs.wavelength.mean(obs.axis_time)
-
-    # Convert to Doppler velocity
-    velocity = wavelength.to(
+    # Average wavelength over time and convert to Doppler velocity
+    obs.inputs = obs.inputs.explicit
+    obs.inputs.wavelength = obs.inputs.wavelength.mean(
+        axis=obs.axis_time,
+    ).to(
         unit=u.km / u.s,
         equivalencies=u.doppler_optical(wavelength_center),
     )
@@ -74,22 +69,10 @@ and display as a false-color movie.
     velocity_max = +100 * u.km / u.s
 
     # Define the spectral normalization curve
-    spd_max = np.nanpercentile(
+    vmax = np.nanpercentile(
         a=obs.outputs,
         q=99.5,
-        axis=axis_txy,
-    )
-
-    # Convert the spectral radiance to
-    # red/green/blue channels
-    rgb, colorbar = na.colorsynth.rgb_and_colorbar(
-        spd=obs.outputs,
-        wavelength=velocity,
-        axis=obs.axis_wavelength,
-        spd_min=0 * u.DN,
-        spd_max=spd_max,
-        wavelength_min=velocity_min,
-        wavelength_max=velocity_max,
+        axis=(obs.axis_time, obs.axis_detector_x, obs.axis_detector_y),
     )
 
     # Display the result as an RGB movie
@@ -100,17 +83,16 @@ and display as a false-color movie.
             gridspec_kw=dict(width_ratios=[.9, .1]),
             constrained_layout=True,
         )
-        ani = na.plt.pcolormovie(
-            obs.inputs.time,
-            obs.inputs.position.x,
-            obs.inputs.position.y,
-            C=rgb,
+        ani, colorbar = na.plt.rgbmovie(
+            C=obs,
             axis_time=obs.axis_time,
-            axis_rgb=obs.axis_wavelength,
+            axis_wavelength=obs.axis_wavelength,
             ax=ax[0],
-            kwargs_animation=dict(
-                interval=500,
-            )
+            vmin=0 * u.DN,
+            vmax=vmax,
+            wavelength_min=velocity_min,
+            wavelength_max=velocity_max,
+            interval=500,
         )
         na.plt.pcolormesh(
             C=colorbar,
