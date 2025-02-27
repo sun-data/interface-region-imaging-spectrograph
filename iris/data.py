@@ -23,7 +23,7 @@ def query_hek(
     description: str = "",
     obs_id: None | int = None,
     limit: int = 200,
-    nrt: bool = True,
+    nrt: bool = False,
 ) -> str:
     """
     Constructs a query that can be sent to the Heliophysics Event Knowledge
@@ -100,7 +100,7 @@ def urls_hek(
     description: str = "",
     obs_id: None | int = None,
     limit: int = 200,
-    nrt: bool = True,
+    nrt: bool = False,
     spectrograph: bool = True,
     sji: bool = True,
     deconvolved: bool = False,
@@ -162,6 +162,7 @@ def urls_hek(
         description=description,
         obs_id=obs_id,
         limit=limit,
+        nrt=nrt,
     )
 
     for i in range(num_retry):
