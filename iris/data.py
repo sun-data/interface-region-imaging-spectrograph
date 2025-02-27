@@ -23,6 +23,7 @@ def query_hek(
     description: str = "",
     obs_id: None | int = None,
     limit: int = 200,
+    nrt: bool = True,
 ) -> str:
     """
     Constructs a query that can be sent to the Heliophysics Event Knowledge
@@ -43,6 +44,8 @@ def query_hek(
         etc. of the observation. If :obj:`None`, all OBSIDs will be used.
     limit
         the maximum number of files returned by the query
+    nrt
+        Whether to return results with near-real-time (NRT) data.
 
     Examples
     --------
@@ -70,12 +73,17 @@ def query_hek(
     if time_stop is None:
         time_stop = astropy.time.Time.now()
 
+    if nrt:
+        hasData = "false"
+    else:
+        hasData = "true"
+
     query_hek = (
         "https://www.lmsal.com/hek/hcr?cmd=search-events3"
         "&outputformat=json"
         f"&startTime={time_start.strftime(format_spec)}"
         f"&stopTime={time_stop.strftime(format_spec)}"
-        "&hasData=true"
+        f"&hasData={hasData}"
         "&hideMostLimbScans=true"
         f"&obsDesc={description}"
         f"&limit={limit}"
@@ -92,6 +100,7 @@ def urls_hek(
     description: str = "",
     obs_id: None | int = None,
     limit: int = 200,
+    nrt: bool = True,
     spectrograph: bool = True,
     sji: bool = True,
     deconvolved: bool = False,
@@ -126,6 +135,8 @@ def urls_hek(
         imagery. Has no effect if ``sji`` is :obj:`False`.
     num_retry
         The number of times to try to connect to the server.
+    nrt
+        Whether to return results with near-real-time (NRT) data.
 
     Examples
     --------
