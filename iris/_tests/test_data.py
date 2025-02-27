@@ -14,12 +14,14 @@ _obsid_b2 = 3893012099
 @pytest.mark.parametrize("description", [""])
 @pytest.mark.parametrize("obs_id", [None, _obsid_b2])
 @pytest.mark.parametrize("limit", [5])
+@pytest.mark.parametrize("nrt", [False, True])
 def test_query_hek(
     time_start: None | astropy.time.Time,
     time_stop: None | astropy.time.Time,
     description: str,
     obs_id: None | str,
     limit: int,
+    nrt: bool,
 ):
     result = iris.data.query_hek(
         time_start=time_start,
@@ -27,6 +29,7 @@ def test_query_hek(
         description=description,
         obs_id=obs_id,
         limit=limit,
+        nrt=nrt,
     )
     assert isinstance(result, str)
 
