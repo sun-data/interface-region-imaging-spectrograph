@@ -132,6 +132,7 @@ class SpectrographObservation(
         axis_detector_x: str = "detector_x",
         axis_detector_y: str = "detector_y",
         limit: int = 200,
+        nrt: bool = False,
         num_retry: int = 5,
     ) -> "SpectrographObservation":
         """
@@ -165,6 +166,8 @@ class SpectrographObservation(
             The maximum number of observations returned by the query.
             Note that this is not the same as the number of files since there
             are several files per observation.
+        nrt
+            Whether to return results with near-real-time (NRT) data.
         num_retry
             The number of times to try to connect to the server.
 
@@ -175,6 +178,7 @@ class SpectrographObservation(
             description=description,
             obs_id=obs_id,
             limit=limit,
+            nrt=nrt,
             spectrograph=True,
             sji=False,
             deconvolved=False,
