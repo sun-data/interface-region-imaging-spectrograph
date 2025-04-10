@@ -249,7 +249,7 @@ def download(
 
         result.append(file)
 
-    return result
+    return sorted(result)
 
 
 def decompress(
