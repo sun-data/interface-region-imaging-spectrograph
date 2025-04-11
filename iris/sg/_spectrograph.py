@@ -260,6 +260,12 @@ class SpectrographObservation(
         shape_wcs = wcs_prototype.array_shape
         shape_wcs = {ax: sz for ax, sz in zip(axes_wcs, shape_wcs)}
 
+        index_max = {
+            axis_wavelength: slice(None, shape_wcs[axis_wavelength]),
+            axis_detector_x: slice(None, shape_wcs[axis_detector_x]),
+            axis_detector_y: slice(None, shape_wcs[axis_detector_y]),
+        }
+
         self = cls.empty(
             shape_base=shape_base,
             shape_wcs=shape_wcs,
@@ -286,7 +292,7 @@ class SpectrographObservation(
             self.outputs[index] = na.ScalarArray(
                 ndarray=hdu.data << u.DN,
                 axes=tuple(shape_wcs),
-            )
+            )[index_max]
 
             time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
             self.inputs.time[index] = time
