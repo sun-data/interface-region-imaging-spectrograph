@@ -172,18 +172,28 @@ class SpectrographObservation(
             The number of times to try to connect to the server.
 
         """
-        urls = iris.data.urls_hek(
+        kwargs = dict(
             time_start=time_start,
             time_stop=time_stop,
             description=description,
             obs_id=obs_id,
             limit=limit,
-            nrt=nrt,
             spectrograph=True,
             sji=False,
             deconvolved=False,
             num_retry=num_retry,
         )
+
+        urls = iris.data.urls_hek(
+            nrt=False,
+            **kwargs,
+        )
+
+        if nrt:
+            urls += iris.data.urls_hek(
+                nrt=True,
+                **kwargs,
+            )
 
         archives = iris.data.download(urls)
         fits = iris.data.decompress(archives)
