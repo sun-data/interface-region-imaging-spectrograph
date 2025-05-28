@@ -299,10 +299,20 @@ class SpectrographObservation(
             timedelta = hdu_aux.data[..., hdu_aux.header[key_timedelta]] << u.s
             self.timedelta[index] = na.ScalarArray(timedelta, axis_detector_x)
 
-            self.outputs[index] = na.ScalarArray(
+            outputs_index = na.ScalarArray(
                 ndarray=hdu.data << u.DN,
                 axes=tuple(shape_wcs),
             )[index_max]
+
+            shape_index = outputs_index.shape
+
+            index_min = {
+                axis_wavelength: slice(None, shape_index[axis_wavelength]),
+                axis_detector_x: slice(None, shape_index[axis_detector_x]),
+                axis_detector_y: slice(None, shape_index[axis_detector_y]),
+            }
+
+            self.outputs[index | index_min] = outputs_index
 
             time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
             self.inputs.time[index] = time
