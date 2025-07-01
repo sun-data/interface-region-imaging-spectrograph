@@ -255,6 +255,10 @@ class SpectrographObservation(
             raise ValueError(f"{window=} not in {windows=}")
 
         hdu_prototype = hdul_prototype[index_window]
+
+        if hdu_prototype.header["CDELT3"] == 0:
+            hdu_prototype.header["CDELT3"] = 1
+
         wcs_prototype = astropy.wcs.WCS(hdu_prototype)
 
         axes_wcs = list(reversed(wcs_prototype.axis_type_names))
@@ -292,6 +296,9 @@ class SpectrographObservation(
             hdul = astropy.io.fits.open(file)
             hdu = hdul[index_window]
             hdu_aux = hdul[~1]
+
+            if hdu.header["CDELT3"] == 0:
+                hdu.header["CDELT3"] = 1
 
             detector_type = hdul[0].header[f"TDET{index_window}"]
 
