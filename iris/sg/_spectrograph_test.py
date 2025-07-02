@@ -12,7 +12,11 @@ import iris
             time_start=astropy.time.Time("2021-09-23T06:00"),
             time_stop=astropy.time.Time("2021-09-23T07:00"),
             nrt=True,
-        )
+        ),
+        iris.sg.SpectrographObservation.from_time_range(
+            time_start=astropy.time.Time("2019-01-23T02:49:03"),
+            time_stop=astropy.time.Time("2019-01-23T02:50:03"),
+        ),
     ],
 )
 class TestSpectrographObservation:
