@@ -29,6 +29,9 @@ class TestSpectrographObservation:
     def test_axis_detector_y(self, array: iris.sg.SpectrographObservation):
         assert isinstance(array.axis_detector_y, str)
 
+    def test_velocity_doppler(self, array: iris.sg.SpectrographObservation):
+        assert np.all(array.velocity_doppler != 0 * u.km / u.s)
+
     def test_radiance(self, array: iris.sg.SpectrographObservation):
         result = array.radiance
         assert isinstance(result, iris.sg.SpectrographObservation)
