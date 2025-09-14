@@ -55,7 +55,7 @@ class SpectrographObservation(
 
         # Calculate the mean rest wavelength of the
         # brightest spectral line
-        wavelength_center = obs.wavelength_center.mean().ndarray
+        wavelength_center = obs.wavelength_center
 
         # Define the wavelength range that will be colorized
         wavelength_min = wavelength_center - 0.5 * u.AA
