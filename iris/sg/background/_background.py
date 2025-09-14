@@ -1,6 +1,7 @@
 import numpy as np
 import astropy.units as u
 import named_arrays as na
+from .._spectrograph import SpectrographObservation
 
 __all__ = [
     "average",
@@ -15,9 +16,9 @@ __all__ = [
 
 
 def average(
-    obs: na.FunctionArray,
+    obs: SpectrographObservation,
     axis: str | tuple[str, ...],
-) -> na.FunctionArray:
+) -> SpectrographObservation:
     """
     Compute the average along the given axis using :func:`numpy.nanmedian`
 
@@ -309,18 +310,8 @@ def fit(
         where_crop = np.isfinite(avg.outputs).mean(avg.axis_wavelength) > 0.7
         data = avg.outputs[where_crop]
 
-        # Calculate the mean rest wavelength of the
-        # brightest spectral line
-        wavelength_center = avg.wavelength_center.ndarray.mean()
-
-        # Interpolate wavelength samples onto cell centers
-        wavelength = avg.inputs.wavelength.cell_centers()
-
         # Convert wavelength to velocity units
-        velocity = wavelength.to(
-            unit=u.km / u.s,
-            equivalencies=u.doppler_optical(wavelength_center),
-        )
+        velocity = avg.velocity_doppler.cell_centers()
         velocity = velocity[where_crop]
 
         # Fit the data within +/- 150 km/s of line center
@@ -430,9 +421,9 @@ def fit(
 
 
 def subtract_spectral_line(
-    obs: na.FunctionArray[na.SpectralPositionalVectorArray, na.ScalarArray],
+    obs: SpectrographObservation,
     axis_wavelength: str,
-) -> na.FunctionArray[na.SpectralPositionalVectorArray, na.ScalarArray]:
+) -> SpectrographObservation:
     """
     Fit `obs` using :func:`fit` and subtract the :func:`model_spectral_line`
     component.
@@ -461,17 +452,6 @@ def subtract_spectral_line(
         obs = iris.sg.SpectrographObservation.from_time_range(
             time_start=astropy.time.Time("2021-09-23T06:00"),
             time_stop=astropy.time.Time("2021-09-23T07:00"),
-        )
-
-        # Calculate the mean rest wavelength of the
-        # brightest spectral line
-        wavelength_center = obs.wavelength_center.ndarray.mean()
-
-        # Convert wavelength to velocity units
-        obs.inputs = obs.inputs.explicit
-        obs.inputs.wavelength = obs.inputs.wavelength.to(
-            unit=u.km / u.s,
-            equivalencies=u.doppler_optical(wavelength_center),
         )
 
         # Save the time and raster axes
@@ -510,7 +490,7 @@ def subtract_spectral_line(
 
     where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > 0.7
 
-    velocity = obs.inputs.wavelength.cell_centers()
+    velocity = obs.velocity_doppler.cell_centers()
     velocity = velocity[where_crop]
 
     where = np.abs(velocity) < 150 * u.km / u.s
@@ -539,10 +519,10 @@ def subtract_spectral_line(
 
 
 def smooth(
-    obs: na.FunctionArray,
+    obs: SpectrographObservation,
     axis_wavelength: str,
     axis_detector_y: str,
-) -> na.FunctionArray:
+) -> SpectrographObservation:
     """
     Smooth the given observation using
     :func:`named_arrays.ndfilters.trimmed_mean_filter`.
@@ -573,17 +553,6 @@ def smooth(
         obs = iris.sg.SpectrographObservation.from_time_range(
             time_start=astropy.time.Time("2021-09-23T06:00"),
             time_stop=astropy.time.Time("2021-09-23T07:00"),
-        )
-
-        # Calculate the mean rest wavelength of the
-        # brightest spectral line
-        wavelength_center = obs.wavelength_center.ndarray.mean()
-
-        # Convert wavelength to velocity units
-        obs.inputs = obs.inputs.explicit
-        obs.inputs.wavelength = obs.inputs.wavelength.to(
-            unit=u.km / u.s,
-            equivalencies=u.doppler_optical(wavelength_center),
         )
 
         # Save the time and raster axes
@@ -636,12 +605,12 @@ def smooth(
 
 
 def estimate(
-    obs: na.FunctionArray,
+    obs: SpectrographObservation,
     axis_time: str,
     axis_wavelength: str,
     axis_detector_x: str,
     axis_detector_y: str,
-) -> na.FunctionArray:
+) -> SpectrographObservation:
     """
     Estimate the background from a given spectrograph observation.
 
@@ -680,17 +649,6 @@ def estimate(
         obs = iris.sg.SpectrographObservation.from_time_range(
             time_start=astropy.time.Time("2021-09-23T06:00"),
             time_stop=astropy.time.Time("2021-09-23T07:00"),
-        )
-
-        # Calculate the mean rest wavelength of the
-        # brightest spectral line
-        wavelength_center = obs.wavelength_center.ndarray.mean()
-
-        # Convert wavelength to velocity units
-        obs.inputs = obs.inputs.explicit
-        obs.inputs.wavelength = obs.inputs.wavelength.to(
-            unit=u.km / u.s,
-            equivalencies=u.doppler_optical(wavelength_center),
         )
 
         # Subtract the spectral line from the average

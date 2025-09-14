@@ -577,6 +577,8 @@ class SpectrographObservation(
                 constrained_layout=True,
                 dpi=200,
             )
+            ax[1].xaxis.set_ticks_position("top")
+            ax[1].xaxis.set_label_position("top")
             ax2 = ax[1].twinx()
             ani, colorbar = na.plt.rgbmovie(
                 self.inputs.time,

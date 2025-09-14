@@ -17,12 +17,6 @@ import iris
 def test_estimate(
     obs: iris.sg.SpectrographObservation,
 ):
-    wavelength_center = obs.wavelength_center.ndarray.mean()
-    obs.inputs = obs.inputs.explicit
-    obs.inputs.wavelength = obs.inputs.wavelength.to(
-        unit=u.km / u.s,
-        equivalencies=u.doppler_optical(wavelength_center),
-    )
 
     result = iris.sg.background.estimate(
         obs=obs,
