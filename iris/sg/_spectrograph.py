@@ -597,7 +597,6 @@ class SpectrographObservation(
                 # wavelength_norm=lambda x: np.arcsinh(x / (25 * u.km / u.s)),
                 # interval=200,
             )
-            colorbar = colorbar[{self.axis_time: 0}]
             na.plt.pcolormesh(
                 colorbar.inputs.x,
                 colorbar.inputs.y.to(
