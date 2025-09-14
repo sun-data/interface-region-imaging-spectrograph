@@ -12,6 +12,7 @@ import astropy.constants
 import astropy.time
 import astropy.wcs
 import astropy.io.fits
+import astropy.visualization
 import named_arrays as na
 import iris
 
@@ -131,7 +132,7 @@ class SpectrographObservation(
         """
         return self.inputs.wavelength.to(
             unit=u.km / u.s,
-            equivalencies=u.doppler_radio(self.wavelength_center.ndarray.mean()),
+            equivalencies=u.doppler_radio(self.wavelength_center),
         )
 
     @classmethod
@@ -380,6 +381,8 @@ class SpectrographObservation(
         if not w0.shape:
             w0 = w0.ndarray
 
+        self.wavelength_center = w0
+
         return self
 
     @classmethod
@@ -549,59 +552,76 @@ class SpectrographObservation(
         cbar_fraction
             The fraction of the space to use for the colorbar axes.
         """
-        axis_time = self.axis_time
-        axis_wavelength = self.axis_wavelength
-
         wavelength_center = self.wavelength_center
 
-        fig, ax = plt.subplots(
-            ncols=2,
-            figsize=(6, 6),
-            gridspec_kw=dict(width_ratios=[1 - cbar_fraction, cbar_fraction]),
-            constrained_layout=True,
-            dpi=200,
-        )
-        ax2 = ax[1].twinx()
-        ani, colorbar = na.plt.rgbmovie(
-            C=self,
-            axis_time=axis_time,
-            axis_wavelength=axis_wavelength,
-            ax=ax[0],
-            vmin=vmin,
-            vmax=vmax,
-            norm=norm,
-            wavelength_min=velocity_min,
-            wavelength_max=velocity_max,
-            # wavelength_norm=lambda x: np.arcsinh(x / (25 * u.km / u.s)),
-            # interval=200,
-        )
-        colorbar = colorbar[{self.axis_time: 0}]
-        na.plt.pcolormesh(
-            colorbar.inputs.x,
-            colorbar.inputs.y.to(
-                u.AA,
-                equivalencies=u.doppler_radio(wavelength_center),
-            ),
-            C=colorbar.outputs,
-            axis_rgb=axis_wavelength,
-            ax=ax[1],
-        )
-        na.plt.pcolormesh(
-            C=colorbar,
-            axis_rgb=axis_wavelength,
-            ax=ax2,
-        )
+        axis_time = self.axis_time
+        axis_wavelength = self.axis_wavelength
+        axis_x = self.axis_detector_x
+        axis_y = self.axis_detector_y
 
-        ax[0].set_aspect("equal")
-        ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
-        ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
-        ax[1].set_ylim(
-            velocity_min.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
-            velocity_max.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
-        )
-        ax2.set_ylim(velocity_min, velocity_max)
+        if vmin is None:
+            vmin = 0
 
-        return ani
+        if vmax is None:
+            vmax = np.nanpercentile(
+                a=self.outputs,
+                q=99.5,
+                axis=(axis_time, axis_x, axis_y),
+            )
+
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots(
+                ncols=2,
+                figsize=(6, 6),
+                gridspec_kw=dict(width_ratios=[1 - cbar_fraction, cbar_fraction]),
+                constrained_layout=True,
+                dpi=200,
+            )
+            ax2 = ax[1].twinx()
+            ani, colorbar = na.plt.rgbmovie(
+                self.inputs.time,
+                self.velocity_doppler,
+                self.inputs.position.x,
+                self.inputs.position.y,
+                C=self.outputs,
+                axis_time=axis_time,
+                axis_wavelength=axis_wavelength,
+                ax=ax[0],
+                vmin=vmin,
+                vmax=vmax,
+                norm=norm,
+                wavelength_min=velocity_min,
+                wavelength_max=velocity_max,
+                # wavelength_norm=lambda x: np.arcsinh(x / (25 * u.km / u.s)),
+                # interval=200,
+            )
+            colorbar = colorbar[{self.axis_time: 0}]
+            na.plt.pcolormesh(
+                colorbar.inputs.x,
+                colorbar.inputs.y.to(
+                    u.AA,
+                    equivalencies=u.doppler_radio(wavelength_center),
+                ),
+                C=colorbar.outputs,
+                axis_rgb=axis_wavelength,
+                ax=ax[1],
+            )
+            na.plt.pcolormesh(
+                C=colorbar,
+                axis_rgb=axis_wavelength,
+                ax=ax2,
+            )
+
+            ax[0].set_aspect("equal")
+            ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
+            ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
+            ax[1].set_ylim(
+                velocity_min.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
+                velocity_max.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
+            )
+            ax2.set_ylim(velocity_min, velocity_max)
+
+            return ani
 
     def to_jshtml(
         self,
