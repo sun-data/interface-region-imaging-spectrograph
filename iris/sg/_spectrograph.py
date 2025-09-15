@@ -1,12 +1,18 @@
+from typing import Callable
 from typing_extensions import Self
 import dataclasses
 import pathlib
+import IPython.display
 import numpy as np
+import matplotlib.colors
+import matplotlib.axes
+import matplotlib.pyplot as plt
 import astropy.units as u
 import astropy.constants
 import astropy.time
 import astropy.wcs
 import astropy.io.fits
+import astropy.visualization
 import named_arrays as na
 import iris
 
@@ -49,7 +55,7 @@ class SpectrographObservation(
 
         # Calculate the mean rest wavelength of the
         # brightest spectral line
-        wavelength_center = obs.wavelength_center.mean().ndarray
+        wavelength_center = obs.wavelength_center
 
         # Define the wavelength range that will be colorized
         wavelength_min = wavelength_center - 0.5 * u.AA
@@ -118,6 +124,16 @@ class SpectrographObservation(
 
     axis_detector_y: str = "detector_y"
     """The logical axis corresponding to changes in detector :math:`y`-coordinate."""
+
+    @property
+    def velocity_doppler(self):
+        """
+        The Doppler velocity of each wavelength bin in the observation.
+        """
+        return self.inputs.wavelength.to(
+            unit=u.km / u.s,
+            equivalencies=u.doppler_radio(self.wavelength_center),
+        )
 
     @classmethod
     def from_time_range(
@@ -358,6 +374,15 @@ class SpectrographObservation(
         where_invalid = self.outputs == -200 * u.DN
         self.outputs[where_invalid] = np.nan
 
+        w0 = self.wavelength_center
+        if np.all(w0[{self.axis_time: 0}] == w0):
+            w0 = w0[{self.axis_time: 0}]
+
+        if not w0.shape:
+            w0 = w0.ndarray
+
+        self.wavelength_center = w0
+
         return self
 
     @classmethod
@@ -496,3 +521,154 @@ class SpectrographObservation(
             self,
             outputs=outputs,
         )
+
+    def _animate(
+        self,
+        norm: None | Callable = None,
+        vmin: None | na.ArrayLike = None,
+        vmax: None | na.ArrayLike = None,
+        velocity_min: u.Quantity = -100 * u.km / u.s,
+        velocity_max: u.Quantity = +100 * u.km / u.s,
+        cbar_fraction: float = 0.1,
+    ) -> matplotlib.animation.FuncAnimation:
+        """
+        Create an animation using the frames in this dataset.
+
+        Parameters
+        ----------
+        norm
+            The normalization method used to scale data into the range [0, 1] before
+            mapping to colors.
+        vmin
+            The minimum value of the data range.
+            If `norm` is :obj:`None`, this parameter will be ignored.
+        vmax
+            The maximum value of the data range.
+            If `norm` is :obj:`None`, this parameter will be ignored.
+        velocity_min
+            The minimum Doppler velocity of the data range.
+        velocity_max
+            The maximum Doppler velocity of the data range.
+        cbar_fraction
+            The fraction of the space to use for the colorbar axes.
+        """
+        wavelength_center = self.wavelength_center
+
+        axis_time = self.axis_time
+        axis_wavelength = self.axis_wavelength
+        axis_x = self.axis_detector_x
+        axis_y = self.axis_detector_y
+
+        if vmin is None:
+            vmin = 0
+
+        if vmax is None:
+            vmax = np.nanpercentile(
+                a=self.outputs,
+                q=99.5,
+                axis=(axis_time, axis_x, axis_y),
+            )
+
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots(
+                ncols=2,
+                figsize=(6, 6),
+                gridspec_kw=dict(width_ratios=[1 - cbar_fraction, cbar_fraction]),
+                constrained_layout=True,
+                dpi=200,
+            )
+            ax[1].xaxis.set_ticks_position("top")
+            ax[1].xaxis.set_label_position("top")
+            ax2 = ax[1].twinx()
+            ani, colorbar = na.plt.rgbmovie(
+                self.inputs.time,
+                self.velocity_doppler,
+                self.inputs.position.x,
+                self.inputs.position.y,
+                C=self.outputs,
+                axis_time=axis_time,
+                axis_wavelength=axis_wavelength,
+                ax=ax[0],
+                vmin=vmin,
+                vmax=vmax,
+                norm=norm,
+                wavelength_min=velocity_min,
+                wavelength_max=velocity_max,
+            )
+            if axis_time in colorbar.shape:
+                colorbar = colorbar[{axis_time: 0}]
+            na.plt.pcolormesh(
+                colorbar.inputs.x,
+                colorbar.inputs.y.to(
+                    u.AA,
+                    equivalencies=u.doppler_radio(wavelength_center),
+                ),
+                C=colorbar.outputs,
+                axis_rgb=axis_wavelength,
+                ax=ax[1],
+            )
+            na.plt.pcolormesh(
+                C=colorbar,
+                axis_rgb=axis_wavelength,
+                ax=ax2,
+            )
+
+            ax[0].set_aspect("equal")
+            ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
+            ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
+            ax[1].set_ylim(
+                velocity_min.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
+                velocity_max.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
+            )
+            ax2.set_ylim(velocity_min, velocity_max)
+
+            return ani
+
+    def to_jshtml(
+        self,
+        norm: None | str | matplotlib.colors.Normalize = None,
+        vmin: None | na.ArrayLike = None,
+        vmax: None | na.ArrayLike = None,
+        velocity_min: u.Quantity = -100 * u.km / u.s,
+        velocity_max: u.Quantity = +100 * u.km / u.s,
+        cbar_fraction: float = 0.1,
+        fps: None | float = None,
+    ) -> IPython.display.HTML:
+        """
+        Create a Javascript animation of this observation.
+
+        Parameters
+        ----------
+        norm
+            The normalization method used to scale data into the range [0, 1] before
+            mapping to colors.
+        vmin
+            The minimum value of the data range.
+            If `norm` is :obj:`None`, this parameter will be ignored.
+        vmax
+            The maximum value of the data range.
+            If `norm` is :obj:`None`, this parameter will be ignored.
+        velocity_min
+            The minimum Doppler velocity of the data range.
+        velocity_max
+            The maximum Doppler velocity of the data range.
+        cbar_fraction
+            The fraction of the space to use for the colorbar axes.
+        fps
+            The frames per second of the animation.
+        """
+        ani = self._animate(
+            norm=norm,
+            vmin=vmin,
+            vmax=vmax,
+            velocity_min=velocity_min,
+            velocity_max=velocity_max,
+            cbar_fraction=cbar_fraction,
+        )
+
+        result = ani.to_jshtml(fps=fps)
+        result = IPython.display.HTML(result)
+
+        plt.close(ani._fig)
+
+        return result

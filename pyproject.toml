@@ -14,9 +14,10 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
+    "ipython",
     "astropy",
     "requests",
-    "named-arrays==0.17.1",
+    "named-arrays>=0.17.1",
 ]
 dynamic = ["version"]
 
