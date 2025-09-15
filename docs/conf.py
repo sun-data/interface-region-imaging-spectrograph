@@ -101,6 +101,7 @@ bibtex_reference_style = 'author_year'
 
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
+    'ipython': ('https://ipython.readthedocs.io/en/stable/', None),
     'numpy': ('https://numpy.org/doc/stable/', None),
     'matplotlib': ('https://matplotlib.org/stable', None),
     'astropy': ('https://docs.astropy.org/en/stable/', None),
