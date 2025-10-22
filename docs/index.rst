@@ -36,14 +36,10 @@ and display as a false-color movie.
 
 .. jupyter-execute::
 
-    import astropy.time
     import iris
 
     # Download a raster sequence
-    obs = iris.sg.SpectrographObservation.from_time_range(
-        time_start=astropy.time.Time("2017-02-11T04:50"),
-        time_stop=astropy.time.Time("2017-02-11T05:00"),
-    )
+    obs = iris.sg.open("2017-02-11T05:00")
 
     # Display the raster sequence as a false-color animation
     obs.to_jshtml()

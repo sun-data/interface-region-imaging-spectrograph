@@ -48,10 +48,7 @@ class SpectrographObservation(
         import iris
 
         # Load a 320-step raster
-        obs = iris.sg.SpectrographObservation.from_time_range(
-            time_start=astropy.time.Time("2021-09-23T06:00"),
-            time_stop=astropy.time.Time("2021-09-23T07:00"),
-        )
+        obs = iris.sg.open("2021-09-23T06:13")
 
         # Calculate the mean rest wavelength of the
         # brightest spectral line

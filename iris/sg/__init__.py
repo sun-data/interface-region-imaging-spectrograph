@@ -9,6 +9,7 @@ from ._effective_area import (
     effective_area,
 )
 from ._spectrograph import SpectrographObservation
+from ._sg import open
 
 __all__ = [
     "background",
@@ -16,4 +17,5 @@ __all__ = [
     "width_slit",
     "effective_area",
     "SpectrographObservation",
+    "open",
 ]
