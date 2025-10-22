@@ -6,7 +6,7 @@ import iris
 @pytest.mark.parametrize(
     argnames="time",
     argvalues=[
-        "2021-09-23T06:13"
+        "2021-09-23T06:13",
     ],
 )
 def test_open(
