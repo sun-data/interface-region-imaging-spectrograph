@@ -36,7 +36,6 @@ and display as a false-color movie.
 
 .. jupyter-execute::
 
-    import astropy.time
     import iris
 
     # Download a raster sequence
