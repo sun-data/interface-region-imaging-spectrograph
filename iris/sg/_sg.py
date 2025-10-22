@@ -3,7 +3,7 @@ import astropy.time
 from ._spectrograph import SpectrographObservation
 
 __all__ = [
-    "open"
+    "open",
 ]
 
 
