@@ -526,8 +526,8 @@ class SpectrographObservation(
         ax: plt.Axes = None,
         cax: plt.Axes = None,
         norm: None | Callable = None,
-        vmin: None | na.ArrayLike = None,
-        vmax: None | na.ArrayLike = None,
+        vmin: None | float | u.Quantity | na.AbstractScalar = None,
+        vmax: None | float | u.Quantity | na.AbstractScalar = None,
         velocity_min: u.Quantity = -100 * u.km / u.s,
         velocity_max: u.Quantity = +100 * u.km / u.s,
         cbar_fraction: float = 0.1,
@@ -544,7 +544,7 @@ class SpectrographObservation(
             If :obj:`None`, a new figure is created.
         cax
             The axes on which to plot the colorbar.
-            If :obj:`None`, space is stolen from `ax` to create a new set of axes.1
+            If :obj:`None`, space is stolen from `ax` to create a new set of axes.
         norm
             The normalization method used to scale data into the range [0, 1] before
             mapping to colors.
@@ -559,7 +559,8 @@ class SpectrographObservation(
         velocity_max
             The maximum Doppler velocity of the data range.
         cbar_fraction
-            The fraction of the space to use for the colorbar axes.
+            The fraction of the space to use for the colorbar axes if `cax`
+            is :obj:`None`.
         """
         a = self
 
