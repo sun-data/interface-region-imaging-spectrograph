@@ -1,6 +1,7 @@
 import pytest
 import IPython.display
 import numpy as np
+import matplotlib.pyplot as plt
 import astropy.units as u
 import astropy.time
 import iris
@@ -42,6 +43,10 @@ class TestSpectrographObservation:
         assert isinstance(result, iris.sg.SpectrographObservation)
         assert np.all(result.inputs == array.inputs)
         assert np.nansum(result.outputs) > 0 * u.erg / (u.cm**2 * u.sr * u.s * u.nm)
+
+    def test_show(self, array: iris.sg.SpectrographObservation):
+        result = array.show()
+        assert isinstance(result, plt.Axes)
 
     def test_to_jshtml(self, array: iris.sg.SpectrographObservation):
         result = array.to_jshtml()

@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.colors
 import matplotlib.axes
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import astropy.units as u
 import astropy.constants
 import astropy.time
@@ -518,6 +519,126 @@ class SpectrographObservation(
             self,
             outputs=outputs,
         )
+
+    def show(
+        self,
+        index_time: int = 0,
+        ax: plt.Axes = None,
+        cax: plt.Axes = None,
+        norm: None | Callable = None,
+        vmin: None | float | u.Quantity | na.AbstractScalar = None,
+        vmax: None | float | u.Quantity | na.AbstractScalar = None,
+        velocity_min: u.Quantity = -100 * u.km / u.s,
+        velocity_max: u.Quantity = +100 * u.km / u.s,
+        cbar_fraction: float = 0.1,
+    ) -> plt.Axes:
+        """
+        Display a single raster of this dataset as a false-color image.
+
+        Parameters
+        ----------
+        index_time
+            The index along the time axis to show.
+        ax
+            The :mod:`matplotlib` axes on which to plot the image.
+            If :obj:`None`, a new figure is created.
+        cax
+            The axes on which to plot the colorbar.
+            If :obj:`None`, space is stolen from `ax` to create a new set of axes.
+        norm
+            The normalization method used to scale data into the range [0, 1] before
+            mapping to colors.
+        vmin
+            The minimum value of the data range.
+            If `norm` is :obj:`None`, this parameter will be ignored.
+        vmax
+            The maximum value of the data range.
+            If `norm` is :obj:`None`, this parameter will be ignored.
+        velocity_min
+            The minimum Doppler velocity of the data range.
+        velocity_max
+            The maximum Doppler velocity of the data range.
+        cbar_fraction
+            The fraction of the space to use for the colorbar axes if `cax`
+            is :obj:`None`.
+        """
+        a = self
+
+        if self.axis_time in self.shape:
+            a = a[{self.axis_time: index_time}]
+
+        wavelength_center = a.wavelength_center
+
+        axis_wavelength = self.axis_wavelength
+        axis_x = self.axis_detector_x
+        axis_y = self.axis_detector_y
+
+        if ax is None:
+            fig, ax = plt.subplots(
+                figsize=(8, 8),
+                constrained_layout=True,
+            )
+
+        if cax is None:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes(
+                position="right",
+                size=f"{cbar_fraction * 100}%",
+                pad=1,
+            )
+
+        if vmin is None:
+            vmin = 0
+
+        if vmax is None:
+            vmax = np.nanpercentile(
+                a=a.outputs,
+                q=99.5,
+                axis=(axis_x, axis_y),
+            )
+
+        with astropy.visualization.quantity_support():
+            cax_twin = cax.twinx()
+            colorbar = na.plt.rgbmesh(
+                a.velocity_doppler,
+                a.inputs.position.x,
+                a.inputs.position.y,
+                C=a.outputs,
+                axis_wavelength=axis_wavelength,
+                ax=ax,
+                vmin=vmin,
+                vmax=vmax,
+                norm=norm,
+                wavelength_min=velocity_min,
+                wavelength_max=velocity_max,
+            )
+            na.plt.pcolormesh(
+                colorbar.inputs.x,
+                colorbar.inputs.y.to(
+                    u.AA,
+                    equivalencies=u.doppler_radio(wavelength_center),
+                ),
+                C=colorbar.outputs,
+                axis_rgb=axis_wavelength,
+                ax=cax,
+            )
+            na.plt.pcolormesh(
+                C=colorbar,
+                axis_rgb=axis_wavelength,
+                ax=cax_twin,
+            )
+
+            ax.set_title(a.inputs.time.ndarray)
+            ax.set_aspect("equal")
+            ax.set_xlabel(f"helioprojective $x$ ({ax.get_xlabel()})")
+            ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
+            cax.set_ylim(
+                velocity_min.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
+                velocity_max.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
+            )
+            cax_twin.set_ylim(velocity_min, velocity_max)
+
+        return ax
 
     def _animate(
         self,
