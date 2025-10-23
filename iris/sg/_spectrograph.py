@@ -568,7 +568,6 @@ class SpectrographObservation(
 
         wavelength_center = a.wavelength_center
 
-        axis_time = self.axis_time
         axis_wavelength = self.axis_wavelength
         axis_x = self.axis_detector_x
         axis_y = self.axis_detector_y
@@ -598,8 +597,6 @@ class SpectrographObservation(
             )
 
         with astropy.visualization.quantity_support():
-            # cax.xaxis.set_ticks_position("top")
-            # cax.xaxis.set_label_position("top")
             cax_twin = cax.twinx()
             colorbar = na.plt.rgbmesh(
                 a.velocity_doppler,
