@@ -333,6 +333,10 @@ class SpectrographObservation(
                 self.inputs.time[index] = time
             except ValueError:  # pragma: nocover
                 pass
+            time_start = astropy.time.Time(hdul[0].header["DATE_OBS"])
+            time_exposure = hdu_aux.data[..., hdu_aux.header["Time"]] * u.s
+            time = time_start + time_exposure
+            self.inputs.time[index] = na.ScalarArray(time, axis_detector_x)
 
             wcs = astropy.wcs.WCS(hdu).wcs
 
@@ -415,8 +419,10 @@ class SpectrographObservation(
             The logical axis corresponding to changes in detector :math:`y`-coordinate.
         """
 
+        shape_time = shape_base | {axis_detector_x: shape_wcs[axis_detector_x]}
+
         inputs = na.ExplicitTemporalWcsSpectralPositionalVectorArray(
-            time=na.ScalarArray.zeros(shape_base),
+            time=na.ScalarArray.zeros(shape_time),
             crval=na.SpectralPositionalVectorArray(
                 wavelength=na.ScalarArray.zeros(shape_base) << u.AA,
                 position=na.Cartesian2dVectorArray(
@@ -469,8 +475,7 @@ class SpectrographObservation(
         shape = na.broadcast_shapes(shape_base, shape_wcs)
         outputs = na.ScalarArray.zeros(shape) << u.DN
 
-        shape_timedelta = shape_base | {axis_detector_x: shape_wcs[axis_detector_x]}
-        timedelta = na.ScalarArray.zeros(shape_timedelta) * u.s
+        timedelta = na.ScalarArray.zeros(shape_time) * u.s
 
         wavelength_center = na.ScalarArray.zeros(shape_base) << u.AA
 
