@@ -331,7 +331,7 @@ class SpectrographObservation(
             try:
                 time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
                 self.inputs.time[index] = time
-            except ValueError:
+            except ValueError:  # pragma: nocover
                 pass
 
             wcs = astropy.wcs.WCS(hdu).wcs
