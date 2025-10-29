@@ -40,65 +40,13 @@ class SpectrographObservation(
 
     .. jupyter-execute::
 
-        import numpy as np
-        import matplotlib.pyplot as plt
-        import astropy.units as u
-        import astropy.time
-        import astropy.visualization
-        import named_arrays as na
         import iris
 
         # Load a 320-step raster
         obs = iris.sg.open("2021-09-23T06:13")
 
-        # Calculate the mean rest wavelength of the
-        # brightest spectral line
-        wavelength_center = obs.wavelength_center
-
-        # Define the wavelength range that will be colorized
-        wavelength_min = wavelength_center - 0.5 * u.AA
-        wavelength_max = wavelength_center + 0.5 * u.AA
-
-        # Define the spectral normalization curve
-        vmax = np.nanpercentile(
-            a=obs.outputs,
-            q=99,
-            axis=(obs.axis_time, obs.axis_detector_x, obs.axis_detector_y),
-        )
-
-        # Isolate the first raster of the observation
-        index = {obs.axis_time: 0}
-
-        # Plot the result as an RGB image
-        with astropy.visualization.quantity_support():
-            fig, ax = plt.subplots(
-                ncols=2,
-                figsize=(6, 6),
-                gridspec_kw=dict(width_ratios=[.9,.1]),
-                constrained_layout=True,
-            )
-            colorbar = na.plt.rgbmesh(
-                obs.inputs[index],
-                C=obs.outputs[index],
-                axis_wavelength=obs.axis_wavelength,
-                ax=ax[0],
-                vmin=0 * u.DN,
-                vmax=vmax,
-                wavelength_min=wavelength_min,
-                wavelength_max=wavelength_max,
-            )
-            na.plt.pcolormesh(
-                C=colorbar,
-                axis_rgb=obs.axis_wavelength,
-                ax=ax[1],
-            )
-            ax[0].set_aspect("equal")
-            ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
-            ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
-            ax[0].set_title(obs.inputs.time[index].ndarray)
-            ax[1].yaxis.tick_right()
-            ax[1].yaxis.set_label_position("right")
-            ax[1].set_ylim(wavelength_min, wavelength_max)
+        # Display the first raster as a false-color image
+        obs.show()
     """
 
     timedelta: u.Quantity | na.AbstractScalar = 0 * u.s
