@@ -46,7 +46,7 @@ class SpectrographObservation(
         obs = iris.sg.open("2021-09-23T06:13")
 
         # Display the first raster as a false-color image
-        obs.show()
+        obs.show();
     """
 
     timedelta: u.Quantity | na.AbstractScalar = 0 * u.s
