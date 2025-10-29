@@ -269,6 +269,9 @@ class SpectrographObservation(
             raise ValueError(f"{window=} not in {windows=}")
 
         hdu_prototype = hdul_prototype[index_window]
+
+        time_start = astropy.time.Time(header_primary["STARTOBS"])
+
         wcs_prototype = astropy.wcs.WCS(hdu_prototype)
 
         axes_wcs = list(reversed(wcs_prototype.axis_type_names))
@@ -328,14 +331,12 @@ class SpectrographObservation(
 
             self.outputs[index | index_min] = outputs_index
 
-            try:
-                time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
-                self.inputs.time[index] = time
-            except ValueError:  # pragma: nocover
-                pass
-            time_start = astropy.time.Time(hdul[0].header["DATE_OBS"])
-            time_exposure = hdu_aux.data[..., hdu_aux.header["Time"]] * u.s
-            time = time_start + time_exposure
+            timedelta_frame = hdu_aux.data[..., hdu_aux.header["Time"]] * u.s
+            timedelta_avg = np.diff(timedelta_frame).mean()
+            timedelta_last = timedelta_frame[~0] + timedelta_avg
+            timedelta_frame = np.append(timedelta_frame, timedelta_last)
+
+            time = time_start + timedelta_frame
             time = na.ScalarArray(time.jd, axis_detector_x)
             self.inputs.time[index] = time
 
@@ -420,10 +421,13 @@ class SpectrographObservation(
             The logical axis corresponding to changes in detector :math:`y`-coordinate.
         """
 
+        vshape_wcs = {a: shape_wcs[a] + 1 for a in shape_wcs}
+
         shape_time = shape_base | {axis_detector_x: shape_wcs[axis_detector_x]}
+        vshape_time = shape_base | {axis_detector_x: vshape_wcs[axis_detector_x]}
 
         inputs = na.ExplicitTemporalWcsSpectralPositionalVectorArray(
-            time=na.ScalarArray.zeros(shape_time),
+            time=na.ScalarArray.zeros(vshape_time),
             crval=na.SpectralPositionalVectorArray(
                 wavelength=na.ScalarArray.zeros(shape_base) << u.AA,
                 position=na.Cartesian2dVectorArray(
@@ -470,7 +474,7 @@ class SpectrographObservation(
                     ),
                 ),
             ),
-            shape_wcs={a: shape_wcs[a] + 1 for a in shape_wcs},
+            shape_wcs=vshape_wcs,
         )
 
         shape = na.broadcast_shapes(shape_base, shape_wcs)
@@ -637,7 +641,7 @@ class SpectrographObservation(
                 ax=cax_twin,
             )
 
-            ax.set_title(a.inputs.time.ndarray)
+            ax.set_title(a.inputs.time.ndarray.mean())
             ax.set_aspect("equal")
             ax.set_xlabel(f"helioprojective $x$ ({ax.get_xlabel()})")
             ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
@@ -708,7 +712,7 @@ class SpectrographObservation(
             ax[1].xaxis.set_label_position("top")
             ax2 = ax[1].twinx()
             ani, colorbar = na.plt.rgbmovie(
-                self.inputs.time,
+                self.inputs.time.mean(axis_x),
                 self.velocity_doppler,
                 self.inputs.position.x,
                 self.inputs.position.y,
