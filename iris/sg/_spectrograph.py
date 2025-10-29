@@ -336,7 +336,8 @@ class SpectrographObservation(
             time_start = astropy.time.Time(hdul[0].header["DATE_OBS"])
             time_exposure = hdu_aux.data[..., hdu_aux.header["Time"]] * u.s
             time = time_start + time_exposure
-            self.inputs.time[index] = na.ScalarArray(time, axis_detector_x)
+            time = na.ScalarArray(time.jd, axis_detector_x)
+            self.inputs.time[index] = time
 
             wcs = astropy.wcs.WCS(hdu).wcs
 
