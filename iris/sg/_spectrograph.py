@@ -328,8 +328,11 @@ class SpectrographObservation(
 
             self.outputs[index | index_min] = outputs_index
 
-            time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
-            self.inputs.time[index] = time
+            try:
+                time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
+                self.inputs.time[index] = time
+            except ValueError:  # pragma: nocover
+                pass
 
             wcs = astropy.wcs.WCS(hdu).wcs
 
@@ -415,47 +418,47 @@ class SpectrographObservation(
         inputs = na.ExplicitTemporalWcsSpectralPositionalVectorArray(
             time=na.ScalarArray.zeros(shape_base),
             crval=na.SpectralPositionalVectorArray(
-                wavelength=na.ScalarArray.empty(shape_base) << u.AA,
+                wavelength=na.ScalarArray.zeros(shape_base) << u.AA,
                 position=na.Cartesian2dVectorArray(
-                    x=na.ScalarArray.empty(shape_base) << u.arcsec,
-                    y=na.ScalarArray.empty(shape_base) << u.arcsec,
+                    x=na.ScalarArray.zeros(shape_base) << u.arcsec,
+                    y=na.ScalarArray.zeros(shape_base) << u.arcsec,
                 ),
             ),
             crpix=na.CartesianNdVectorArray(
                 components=dict(
-                    wavelength=na.ScalarArray.empty(shape_base),
-                    detector_x=na.ScalarArray.empty(shape_base),
-                    detector_y=na.ScalarArray.empty(shape_base),
+                    wavelength=na.ScalarArray.zeros(shape_base),
+                    detector_x=na.ScalarArray.zeros(shape_base),
+                    detector_y=na.ScalarArray.zeros(shape_base),
                 )
             ),
             cdelt=na.SpectralPositionalVectorArray(
-                wavelength=na.ScalarArray.empty(shape_base) << u.AA,
+                wavelength=na.ScalarArray.zeros(shape_base) << u.AA,
                 position=na.Cartesian2dVectorArray(
-                    x=na.ScalarArray.empty(shape_base) << u.arcsec,
-                    y=na.ScalarArray.empty(shape_base) << u.arcsec,
+                    x=na.ScalarArray.zeros(shape_base) << u.arcsec,
+                    y=na.ScalarArray.zeros(shape_base) << u.arcsec,
                 ),
             ),
             pc=na.SpectralPositionalMatrixArray(
                 wavelength=na.CartesianNdVectorArray(
                     components=dict(
-                        wavelength=na.ScalarArray.empty(shape_base),
-                        detector_x=na.ScalarArray.empty(shape_base),
-                        detector_y=na.ScalarArray.empty(shape_base),
+                        wavelength=na.ScalarArray.zeros(shape_base),
+                        detector_x=na.ScalarArray.zeros(shape_base),
+                        detector_y=na.ScalarArray.zeros(shape_base),
                     ),
                 ),
                 position=na.Cartesian2dMatrixArray(
                     x=na.CartesianNdVectorArray(
                         components=dict(
-                            wavelength=na.ScalarArray.empty(shape_base),
-                            detector_x=na.ScalarArray.empty(shape_base),
-                            detector_y=na.ScalarArray.empty(shape_base),
+                            wavelength=na.ScalarArray.zeros(shape_base),
+                            detector_x=na.ScalarArray.zeros(shape_base),
+                            detector_y=na.ScalarArray.zeros(shape_base),
                         ),
                     ),
                     y=na.CartesianNdVectorArray(
                         components=dict(
-                            wavelength=na.ScalarArray.empty(shape_base),
-                            detector_x=na.ScalarArray.empty(shape_base),
-                            detector_y=na.ScalarArray.empty(shape_base),
+                            wavelength=na.ScalarArray.zeros(shape_base),
+                            detector_x=na.ScalarArray.zeros(shape_base),
+                            detector_y=na.ScalarArray.zeros(shape_base),
                         ),
                     ),
                 ),
@@ -464,12 +467,12 @@ class SpectrographObservation(
         )
 
         shape = na.broadcast_shapes(shape_base, shape_wcs)
-        outputs = na.ScalarArray.empty(shape) << u.DN
+        outputs = na.ScalarArray.zeros(shape) << u.DN
 
         shape_timedelta = shape_base | {axis_detector_x: shape_wcs[axis_detector_x]}
-        timedelta = na.ScalarArray.empty(shape_timedelta) * u.s
+        timedelta = na.ScalarArray.zeros(shape_timedelta) * u.s
 
-        wavelength_center = na.ScalarArray.empty(shape_base) << u.AA
+        wavelength_center = na.ScalarArray.zeros(shape_base) << u.AA
 
         return cls(
             inputs=inputs,
