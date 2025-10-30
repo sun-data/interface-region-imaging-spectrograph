@@ -40,65 +40,13 @@ class SpectrographObservation(
 
     .. jupyter-execute::
 
-        import numpy as np
-        import matplotlib.pyplot as plt
-        import astropy.units as u
-        import astropy.time
-        import astropy.visualization
-        import named_arrays as na
         import iris
 
         # Load a 320-step raster
         obs = iris.sg.open("2021-09-23T06:13")
 
-        # Calculate the mean rest wavelength of the
-        # brightest spectral line
-        wavelength_center = obs.wavelength_center
-
-        # Define the wavelength range that will be colorized
-        wavelength_min = wavelength_center - 0.5 * u.AA
-        wavelength_max = wavelength_center + 0.5 * u.AA
-
-        # Define the spectral normalization curve
-        vmax = np.nanpercentile(
-            a=obs.outputs,
-            q=99,
-            axis=(obs.axis_time, obs.axis_detector_x, obs.axis_detector_y),
-        )
-
-        # Isolate the first raster of the observation
-        index = {obs.axis_time: 0}
-
-        # Plot the result as an RGB image
-        with astropy.visualization.quantity_support():
-            fig, ax = plt.subplots(
-                ncols=2,
-                figsize=(6, 6),
-                gridspec_kw=dict(width_ratios=[.9,.1]),
-                constrained_layout=True,
-            )
-            colorbar = na.plt.rgbmesh(
-                obs.inputs[index],
-                C=obs.outputs[index],
-                axis_wavelength=obs.axis_wavelength,
-                ax=ax[0],
-                vmin=0 * u.DN,
-                vmax=vmax,
-                wavelength_min=wavelength_min,
-                wavelength_max=wavelength_max,
-            )
-            na.plt.pcolormesh(
-                C=colorbar,
-                axis_rgb=obs.axis_wavelength,
-                ax=ax[1],
-            )
-            ax[0].set_aspect("equal")
-            ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
-            ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
-            ax[0].set_title(obs.inputs.time[index].ndarray)
-            ax[1].yaxis.tick_right()
-            ax[1].yaxis.set_label_position("right")
-            ax[1].set_ylim(wavelength_min, wavelength_max)
+        # Display the first raster as a false-color image
+        obs.show();
     """
 
     timedelta: u.Quantity | na.AbstractScalar = 0 * u.s
@@ -269,6 +217,9 @@ class SpectrographObservation(
             raise ValueError(f"{window=} not in {windows=}")
 
         hdu_prototype = hdul_prototype[index_window]
+
+        time_start = astropy.time.Time(header_primary["STARTOBS"])
+
         wcs_prototype = astropy.wcs.WCS(hdu_prototype)
 
         axes_wcs = list(reversed(wcs_prototype.axis_type_names))
@@ -328,11 +279,14 @@ class SpectrographObservation(
 
             self.outputs[index | index_min] = outputs_index
 
-            try:
-                time = astropy.time.Time(hdul[0].header["DATE_OBS"]).jd
-                self.inputs.time[index] = time
-            except ValueError:  # pragma: nocover
-                pass
+            timedelta_frame = hdu_aux.data[..., hdu_aux.header["Time"]] * u.s
+            timedelta_avg = np.diff(timedelta_frame).mean()
+            timedelta_last = timedelta_frame[~0] + timedelta_avg
+            timedelta_frame = np.append(timedelta_frame, timedelta_last)
+
+            time = time_start + timedelta_frame
+            time = na.ScalarArray(time.jd, axis_detector_x)
+            self.inputs.time[index] = time
 
             wcs = astropy.wcs.WCS(hdu).wcs
 
@@ -415,8 +369,13 @@ class SpectrographObservation(
             The logical axis corresponding to changes in detector :math:`y`-coordinate.
         """
 
+        vshape_wcs = {a: shape_wcs[a] + 1 for a in shape_wcs}
+
+        shape_time = shape_base | {axis_detector_x: shape_wcs[axis_detector_x]}
+        vshape_time = shape_base | {axis_detector_x: vshape_wcs[axis_detector_x]}
+
         inputs = na.ExplicitTemporalWcsSpectralPositionalVectorArray(
-            time=na.ScalarArray.zeros(shape_base),
+            time=na.ScalarArray.zeros(vshape_time),
             crval=na.SpectralPositionalVectorArray(
                 wavelength=na.ScalarArray.zeros(shape_base) << u.AA,
                 position=na.Cartesian2dVectorArray(
@@ -463,14 +422,13 @@ class SpectrographObservation(
                     ),
                 ),
             ),
-            shape_wcs={a: shape_wcs[a] + 1 for a in shape_wcs},
+            shape_wcs=vshape_wcs,
         )
 
         shape = na.broadcast_shapes(shape_base, shape_wcs)
         outputs = na.ScalarArray.zeros(shape) << u.DN
 
-        shape_timedelta = shape_base | {axis_detector_x: shape_wcs[axis_detector_x]}
-        timedelta = na.ScalarArray.zeros(shape_timedelta) * u.s
+        timedelta = na.ScalarArray.zeros(shape_time) * u.s
 
         wavelength_center = na.ScalarArray.zeros(shape_base) << u.AA
 
@@ -631,7 +589,7 @@ class SpectrographObservation(
                 ax=cax_twin,
             )
 
-            ax.set_title(a.inputs.time.ndarray)
+            ax.set_title(a.inputs.time.ndarray.mean())
             ax.set_aspect("equal")
             ax.set_xlabel(f"helioprojective $x$ ({ax.get_xlabel()})")
             ax.set_ylabel(f"helioprojective $y$ ({ax.get_ylabel()})")
@@ -702,7 +660,7 @@ class SpectrographObservation(
             ax[1].xaxis.set_label_position("top")
             ax2 = ax[1].twinx()
             ani, colorbar = na.plt.rgbmovie(
-                self.inputs.time,
+                self.inputs.time.mean(axis_x),
                 self.velocity_doppler,
                 self.inputs.position.x,
                 self.inputs.position.y,
