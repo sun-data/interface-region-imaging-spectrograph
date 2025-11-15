@@ -658,12 +658,15 @@ class SpectrographObservation(
             )
             ax[1].xaxis.set_ticks_position("top")
             ax[1].xaxis.set_label_position("top")
+            ax[1].ticklabel_format(useOffset=False)
             ax2 = ax[1].twinx()
+            x = self.inputs.position.x
+            y = self.inputs.position.y
             ani, colorbar = na.plt.rgbmovie(
                 self.inputs.time.mean(axis_x),
                 self.velocity_doppler,
-                self.inputs.position.x,
-                self.inputs.position.y,
+                x,
+                y,
                 C=self.outputs,
                 axis_time=axis_time,
                 axis_wavelength=axis_wavelength,
@@ -693,8 +696,8 @@ class SpectrographObservation(
             )
 
             ax[0].set_aspect("equal")
-            ax[0].set_xlabel(f"helioprojective $x$ ({ax[0].get_xlabel()})")
-            ax[0].set_ylabel(f"helioprojective $y$ ({ax[0].get_ylabel()})")
+            ax[0].set_xlabel(f"helioprojective $x$ ({x.unit:latex_inline})")
+            ax[0].set_ylabel(f"helioprojective $y$ ({y.unit:latex_inline})")
             ax[1].set_ylim(
                 velocity_min.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
                 velocity_max.to(u.AA, equivalencies=u.doppler_radio(wavelength_center)),
