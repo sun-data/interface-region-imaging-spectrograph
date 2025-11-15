@@ -140,7 +140,7 @@ def urls_hek(
 
     Examples
     --------
-    Find the URLs of the first 5 "A1: QS monitoring" spectrograph observations
+    Find the URLs of the last 5 "A1: QS monitoring" spectrograph observations
     in 2023.
 
     .. jupyter-execute::
@@ -218,13 +218,16 @@ def download(
 
     Examples
     --------
-    Download the most recent "A1: QS monitoring" spectrograph files
+    Download the last "A1: QS monitoring" spectrograph file in 2023.
 
     .. jupyter-execute::
 
+        import astropy.time
         import iris
 
         urls = iris.data.urls_hek(
+            time_start=astropy.time.Time("2023-01-01T00:00"),
+            time_stop=astropy.time.Time("2024-01-01T00:00"),
             description="A1: QS monitoring",
             limit=1,
             sji=False,
@@ -275,15 +278,18 @@ def decompress(
 
     Examples
     --------
-    Download the most recent "A1: QS monitoring" spectrograph files and
-    decompress into a list of ``.fits`` files.
+    Download the most last "A1: QS monitoring" spectrograph file in 2023 and
+    decompress it into a list of ``.fits`` files.
 
     .. jupyter-execute::
 
+        import astropy.time
         import iris
 
         # Find the URL of the .tar.gz archive
         urls = iris.data.urls_hek(
+            time_start=astropy.time.Time("2023-01-01T00:00"),
+            time_stop=astropy.time.Time("2024-01-01T00:00"),
             description="A1: QS monitoring",
             limit=1,
             sji=False,
