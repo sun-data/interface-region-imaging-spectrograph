@@ -101,6 +101,7 @@ def test_download(
     argvalues=[
         iris.data.download(
             urls=iris.data.urls_hek(
+                time_stop=astropy.time.Time("2024-01-01"),
                 obs_id=_obsid_b2,
                 limit=1,
                 sji=False,
