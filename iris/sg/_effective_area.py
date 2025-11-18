@@ -1,7 +1,8 @@
-import scipy.io
+import numpy as np
 import astropy.units as u
+import astropy.time
+import irispy.utils.response
 import named_arrays as na
-import iris
 
 __all__ = [
     "gain",
@@ -22,14 +23,21 @@ The angular subtent of the spectrographic slit.
 """
 
 
-def effective_area(wavelength: u.Quantity | na.AbstractScalar) -> na.AbstractScalar:
+def effective_area(
+    time: astropy.time.Time | na.AbstractScalarArray,
+    wavelength: u.Quantity | na.AbstractScalarArray,
+) -> na.AbstractScalar:
     """
     Load the effective area of the spectrograph.
 
-    Currently only Version 1 is implemented.
+    This function uses :func:`irispy.utils.response.get_interpolated_effective_area`
+    to find the effective area for a given time and wavelength.
 
     Parameters
     ----------
+    time
+        The time at which to calculate the effective area.
+        Must be only a single time, an array of times is not supported.
     wavelength
         The wavelength of the incident light at which to evaluate the effective
         area.
@@ -43,9 +51,13 @@ def effective_area(wavelength: u.Quantity | na.AbstractScalar) -> na.AbstractSca
 
         import matplotlib.pyplot as plt
         import astropy.units as u
+        import astropy.time
         import astropy.visualization
         import named_arrays as na
         import iris
+
+        # Define a time at which to evalutate the effective area
+        time = astropy.time.Time("2014-01-01")
 
         # Define a wavelength grid
         wavelength = na.linspace(
@@ -69,27 +81,30 @@ def effective_area(wavelength: u.Quantity | na.AbstractScalar) -> na.AbstractSca
             ax.set_ylabel(f"effective area ({ax.get_ylabel()})")
 
     """
+    shape = na.shape_broadcasted(time, wavelength)
 
-    files = iris.response.files()
+    time = na.as_named_array(time)
+    wavelength = na.as_named_array(wavelength)
 
-    file_v1 = files[0]
+    time = time.ndarray_aligned(shape)
+    wavelength = wavelength.ndarray_aligned(shape)
 
-    struct_v1 = scipy.io.readsav(file_v1)["p0"]
+    response = irispy.utils.response.get_latest_response(time)
 
-    wavelength_v1 = struct_v1["LAMBDA"][0] * u.nm
-    area_v1 = struct_v1["AREA_SG"][0] * u.cm**2
+    if np.min(wavelength) > 2000 * u.AA:
+        detector_type = "NUV"
+    else:
+        detector_type = "FUV"
 
-    axis = "_dummy"
-    axes = ("channel", axis)
-
-    axis = "_dummy"
-
-    wavelength_v1 = na.ScalarArray(wavelength_v1, axes=axis)
-    area_v1 = na.ScalarArray(area_v1, axes=axes).sum("channel")
-
-    return na.interp(
-        x=wavelength,
-        xp=wavelength_v1,
-        fp=area_v1,
-        axis=axis,
+    area = irispy.utils.response.get_interpolated_effective_area(
+        iris_response=response,
+        detector_type=detector_type,
+        obs_wavelength=wavelength,
     )
+
+    area = na.ScalarArray(
+        ndarray=area,
+        axes=tuple(shape)
+    )
+
+    return area
