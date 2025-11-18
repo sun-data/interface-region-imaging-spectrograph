@@ -81,7 +81,7 @@ def effective_area(
         )
 
         # Compute the effective area
-        area = iris.sg.effective_area(wavelength)
+        area = iris.sg.effective_area(time, wavelength)
 
         # Plot the effective area as a function of wavelength
         with astropy.visualization.quantity_support():
