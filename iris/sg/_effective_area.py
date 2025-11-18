@@ -117,7 +117,7 @@ def effective_area(
 
     area = na.ScalarArray(
         ndarray=area,
-        axes=tuple(shape)
+        axes=tuple(shape),
     )
 
     return area

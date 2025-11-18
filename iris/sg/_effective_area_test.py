@@ -9,7 +9,7 @@ import iris
     argnames="time",
     argvalues=[
         astropy.time.Time("2014-01-01"),
-    ]
+    ],
 )
 @pytest.mark.parametrize(
     argnames="wavelength",
