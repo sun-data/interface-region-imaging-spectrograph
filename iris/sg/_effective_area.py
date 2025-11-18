@@ -5,22 +5,35 @@ import irispy.utils.response
 import named_arrays as na
 
 __all__ = [
-    "gain",
+    "dn_to_photons",
     "width_slit",
     "effective_area",
 ]
-
-gain = 12 * u.photon / u.DN
-"""
-The conversion factor between counts and photons measured by the sensor
-:cite:p:`Wulser2018`.
-"""
 
 
 width_slit = 1 / 3 * u.arcsec
 """
 The angular subtent of the spectrographic slit.
 """
+
+
+def dn_to_photons(
+    wavelength: u.Quantity | na.AbstractScalar,
+) -> u.Quantity:
+    """
+    Return the conversion factor between data numbers (DN) and photons
+    given by :cite:t:`Wulser2018`.
+
+    Parameters
+    ----------
+    wavelength
+        The wavelength at which to compute the conversion factor.
+    """
+    return np.where(
+        wavelength > 2000 * u.AA,
+        18 * u.ph / u.DN,
+        5 * u.ph / u.DN,
+    )
 
 
 def effective_area(
