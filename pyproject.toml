@@ -17,7 +17,7 @@ dependencies = [
     "ipython",
     "astropy",
     "requests",
-    "irispy",
+    "irispy-lmsal",
     "named-arrays>=0.17.1",
 ]
 dynamic = ["version"]
