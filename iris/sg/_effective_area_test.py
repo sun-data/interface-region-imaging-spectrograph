@@ -15,7 +15,7 @@ import iris
     argnames="wavelength",
     argvalues=[
         1335 * u.AA,
-        na.linspace(1300, 1400, axis="w", num=11) * u.AA,
+        na.linspace(1300, 3000, axis="w", num=11) * u.AA,
     ],
 )
 def test_effective_area(

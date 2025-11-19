@@ -74,7 +74,7 @@ def effective_area(
 
         # Define a wavelength grid
         wavelength = na.linspace(
-            start=1250 * u.AA,
+            start=1300 * u.AA,
             stop=3000 * u.AA,
             axis="wavelength",
             num=1001,
@@ -94,25 +94,33 @@ def effective_area(
             ax.set_ylabel(f"effective area ({ax.get_ylabel()})")
 
     """
-    shape = na.shape_broadcasted(time, wavelength)
+    if time.size != 1:  # pragma: nocover
+        raise ValueError(f"arrays of times are not supported, got {time.shape=}")
 
-    time = na.as_named_array(time)
     wavelength = na.as_named_array(wavelength)
 
-    time = time.ndarray_aligned(shape)
-    wavelength = wavelength.ndarray_aligned(shape)
+    shape = wavelength.shape
+
+    wavelength = wavelength.ndarray
 
     response = irispy.utils.response.get_latest_response(time)
 
-    if np.min(wavelength) > 2000 * u.AA:
-        detector_type = "NUV"
-    else:
-        detector_type = "FUV"
-
-    area = irispy.utils.response.get_interpolated_effective_area(
+    area_fuv = irispy.utils.response.get_interpolated_effective_area(
         iris_response=response,
-        detector_type=detector_type,
+        detector_type="FUV",
         obs_wavelength=wavelength,
+    )
+
+    area_nuv = irispy.utils.response.get_interpolated_effective_area(
+        iris_response=response,
+        detector_type="NUV",
+        obs_wavelength=wavelength,
+    )
+
+    area = np.where(
+        wavelength > 2000 * u.AA,
+        area_nuv,
+        area_fuv
     )
 
     area = na.ScalarArray(
