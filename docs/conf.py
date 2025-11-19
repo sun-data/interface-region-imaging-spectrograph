@@ -20,7 +20,7 @@ os.environ['PYTHONPATH'] = ';'.join((package_path, os.environ.get('PYTHONPATH', 
 # -- Project information -----------------------------------------------------
 
 project = 'IRIS'
-copyright = '2024, Roy T. Smart'
+copyright = '2025, Roy T. Smart'
 author = 'Roy T. Smart'
 
 # -- General configuration ---------------------------------------------------
@@ -37,6 +37,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinxcontrib.bibtex',
     'jupyter_sphinx',
+    'sphinx_favicon',
 ]
 autosummary_generate = True  # Turn on sphinx.ext.autosummary
 autosummary_imported_members = True
@@ -91,6 +92,15 @@ html_theme_options = {
         "google_analytics_id": "G-8LZYRQ4NZ7"
     },
 }
+
+favicons = [
+    dict(href="favicon_io/favicon-16x16.png"),
+    dict(href="favicon_io/favicon-32x32.png"),
+    dict(
+        rel="apple-touch-icon",
+        href="favicon_io/apple-touch-icon.png"
+    )
+]
 
 # https://github.com/readthedocs/readthedocs.org/issues/2569
 master_doc = 'index'
