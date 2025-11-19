@@ -120,7 +120,7 @@ def effective_area(
     area = np.where(
         wavelength > 2000 * u.AA,
         area_nuv,
-        area_fuv
+        area_fuv,
     )
 
     area = na.ScalarArray(
