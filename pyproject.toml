@@ -9,7 +9,7 @@ authors = [
 ]
 description = "A Python library for analyzing solar observations from the Interface Region Imaging Spectrograph (IRIS)."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
@@ -17,6 +17,7 @@ dependencies = [
     "ipython",
     "astropy",
     "requests",
+    "irispy-lmsal",
     "named-arrays>=0.17.1",
 ]
 dynamic = ["version"]

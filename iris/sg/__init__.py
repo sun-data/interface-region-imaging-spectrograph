@@ -4,7 +4,7 @@ Represent and manipulate data captured using the IRIS spectrograph
 
 from . import background
 from ._effective_area import (
-    gain,
+    dn_to_photons,
     width_slit,
     effective_area,
 )
@@ -13,7 +13,7 @@ from ._sg import open
 
 __all__ = [
     "background",
-    "gain",
+    "dn_to_photons",
     "width_slit",
     "effective_area",
     "SpectrographObservation",

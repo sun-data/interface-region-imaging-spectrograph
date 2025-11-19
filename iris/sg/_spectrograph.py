@@ -449,6 +449,7 @@ class SpectrographObservation(
         Convert to radiometric units using :func:`iris.sg.effective_area`.
         """
 
+        time = self.inputs.time.ndarray.mean()
         wavelength = self.inputs.wavelength
 
         lower = {self.axis_wavelength: slice(None, ~0)}
@@ -457,9 +458,9 @@ class SpectrographObservation(
 
         energy = astropy.constants.h * astropy.constants.c / wavelength / u.ph
 
-        gain = iris.sg.gain
+        gain = iris.sg.dn_to_photons(wavelength)
 
-        area_eff = iris.sg.effective_area(wavelength)
+        area_eff = iris.sg.effective_area(time, wavelength)
 
         pix_xy = np.diff(self.inputs.position, axis=self.axis_detector_y).length
         pix_xy = pix_xy.mean(self.axis_detector_x)
