@@ -58,7 +58,7 @@ def effective_area(
     Examples
     --------
 
-    Plot the effective area of the spectrograph as a function of wavelength.
+    Plot the effective area of the FUV spectrograph channel as a function of wavelength.
 
     .. jupyter-execute::
 
@@ -69,13 +69,38 @@ def effective_area(
         import named_arrays as na
         import iris
 
-        # Define a time at which to evalutate the effective area
+        # Define a time at which to evaluate the effective area
         time = astropy.time.Time("2014-01-01")
 
         # Define a wavelength grid
         wavelength = na.linspace(
             start=1300 * u.AA,
-            stop=3000 * u.AA,
+            stop=1408 * u.AA,
+            axis="wavelength",
+            num=1001,
+        )
+
+        # Compute the effective area
+        area = iris.sg.effective_area(time, wavelength)
+
+        # Plot the effective area as a function of wavelength
+        with astropy.visualization.quantity_support():
+            fig, ax = plt.subplots()
+            na.plt.plot(
+                wavelength,
+                area,
+            )
+            ax.set_xlabel(f"wavelength ({ax.get_xlabel()})")
+            ax.set_ylabel(f"effective area ({ax.get_ylabel()})")
+
+    Plot the effective area of the NUV spectrograph channel as a function of wavelength.
+
+    .. jupyter-execute::
+
+        # Define a wavelength grid
+        wavelength = na.linspace(
+            start=2780 * u.AA,
+            stop=2840 * u.AA,
             axis="wavelength",
             num=1001,
         )
