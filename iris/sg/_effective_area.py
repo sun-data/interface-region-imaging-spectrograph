@@ -32,7 +32,7 @@ def dn_to_photons(
     return np.where(
         wavelength > 2000 * u.AA,
         18 * u.ph / u.DN,
-        5 * u.ph / u.DN,
+        4 * u.ph / u.DN,
     )
 
 
