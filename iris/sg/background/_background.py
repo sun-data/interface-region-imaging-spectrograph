@@ -311,7 +311,7 @@ def fit(
         data = avg.outputs[where_crop]
 
         # Convert wavelength to velocity units
-        velocity = avg.velocity_doppler.cell_centers()
+        velocity = avg.inputs.velocity.cell_centers()
         velocity = velocity[where_crop]
 
         # Fit the data within +/- 150 km/s of line center
