@@ -54,11 +54,6 @@ class SpectrographObservation(
     The exposure time for each frame in the observation.
     """
 
-    wavelength_center: None | u.Quantity | na.AbstractScalar = None
-    """
-    TThe rest wavelength of the dominant spectral line in the observation.
-    """
-
     axis_time: str = "time"
     """The logical axis corresponding to changes in time."""
 
@@ -70,16 +65,6 @@ class SpectrographObservation(
 
     axis_detector_y: str = "detector_y"
     """The logical axis corresponding to changes in detector :math:`y`-coordinate."""
-
-    @property
-    def velocity_doppler(self):
-        """
-        The Doppler velocity of each wavelength bin in the observation.
-        """
-        return self.inputs.wavelength.to(
-            unit=u.km / u.s,
-            equivalencies=u.doppler_radio(self.wavelength_center),
-        )
 
     @classmethod
     def from_time_range(
@@ -317,7 +302,7 @@ class SpectrographObservation(
             pc.position.y.components[axis_detector_y][index] = wcs.pc[~iy, ~iy]
 
             key_center = f"TWAVE{index_window}"
-            self.wavelength_center[index] = hdul[0].header[key_center] * u.AA
+            self.inputs.wavelength_rest[index] = hdul[0].header[key_center] * u.AA
 
         t = astropy.time.Time(
             val=self.inputs.time.ndarray,
@@ -329,14 +314,14 @@ class SpectrographObservation(
         where_invalid = self.outputs == -200 * u.DN
         self.outputs[where_invalid] = np.nan
 
-        w0 = self.wavelength_center
+        w0 = self.inputs.wavelength_rest
         if np.all(w0[{self.axis_time: 0}] == w0):
             w0 = w0[{self.axis_time: 0}]
 
         if not w0.shape:
             w0 = w0.ndarray
 
-        self.wavelength_center = w0
+        self.inputs.wavelength_rest = w0
 
         return self
 
@@ -374,8 +359,9 @@ class SpectrographObservation(
         shape_time = shape_base | {axis_detector_x: shape_wcs[axis_detector_x]}
         vshape_time = shape_base | {axis_detector_x: vshape_wcs[axis_detector_x]}
 
-        inputs = na.ExplicitTemporalWcsSpectralPositionalVectorArray(
+        inputs = na.ExplicitTemporalWcsDopplerPositionalVectorArray(
             time=na.ScalarArray.zeros(vshape_time),
+            wavelength_rest=na.ScalarArray.zeros(shape_base) << u.AA,
             crval=na.SpectralPositionalVectorArray(
                 wavelength=na.ScalarArray.zeros(shape_base) << u.AA,
                 position=na.Cartesian2dVectorArray(
@@ -430,13 +416,10 @@ class SpectrographObservation(
 
         timedelta = na.ScalarArray.zeros(shape_time) * u.s
 
-        wavelength_center = na.ScalarArray.zeros(shape_base) << u.AA
-
         return cls(
             inputs=inputs,
             outputs=outputs,
             timedelta=timedelta,
-            wavelength_center=wavelength_center,
             axis_time=axis_time,
             axis_wavelength=axis_wavelength,
             axis_detector_x=axis_detector_x,
@@ -529,7 +512,7 @@ class SpectrographObservation(
         if self.axis_time in self.shape:
             a = a[{self.axis_time: index_time}]
 
-        wavelength_center = a.wavelength_center
+        wavelength_center = na.as_named_array(a.inputs.wavelength_rest).ndarray
 
         axis_wavelength = self.axis_wavelength
         axis_x = self.axis_detector_x
@@ -562,7 +545,7 @@ class SpectrographObservation(
         with astropy.visualization.quantity_support():
             cax_twin = cax.twinx()
             colorbar = na.plt.rgbmesh(
-                a.velocity_doppler,
+                a.inputs.velocity,
                 a.inputs.position.x,
                 a.inputs.position.y,
                 C=a.outputs,
@@ -632,7 +615,7 @@ class SpectrographObservation(
         cbar_fraction
             The fraction of the space to use for the colorbar axes.
         """
-        wavelength_center = self.wavelength_center
+        wavelength_center = self.inputs.wavelength_rest
 
         axis_time = self.axis_time
         axis_wavelength = self.axis_wavelength
@@ -665,7 +648,7 @@ class SpectrographObservation(
             y = self.inputs.position.y
             ani, colorbar = na.plt.rgbmovie(
                 self.inputs.time.mean(axis_x),
-                self.velocity_doppler,
+                self.inputs.velocity,
                 x,
                 y,
                 C=self.outputs,
