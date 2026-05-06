@@ -512,7 +512,7 @@ class SpectrographObservation(
         if self.axis_time in self.shape:
             a = a[{self.axis_time: index_time}]
 
-        wavelength_center = a.inputs.wavelength_rest
+        wavelength_center = na.as_named_array(a.inputs.wavelength_rest).ndarray
 
         axis_wavelength = self.axis_wavelength
         axis_x = self.axis_detector_x
