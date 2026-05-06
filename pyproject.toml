@@ -19,7 +19,7 @@ dependencies = [
     "requests",
     "joblib",
     "irispy-lmsal",
-    "named-arrays@git+https://github.com/sun-data/named-arrays#egg=feature/doppler-vector-2",
+    "named-arrays@git+https://github.com/sun-data/named-arrays@feature/doppler-vector-2",
 ]
 dynamic = ["version"]
 
