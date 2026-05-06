@@ -8,6 +8,7 @@ import pathlib
 import shutil
 import requests
 import astropy.time
+import iris
 
 __all__ = [
     "query_hek",
@@ -94,6 +95,7 @@ def query_hek(
     return query_hek
 
 
+@iris.memory.cache
 def urls_hek(
     time_start: None | astropy.time.Time = None,
     time_stop: None | astropy.time.Time = None,
