@@ -5,7 +5,6 @@ import pathlib
 import astropy.time
 import iris
 
-
 _obsid_b2 = 3893012099
 
 

@@ -17,6 +17,7 @@ dependencies = [
     "ipython",
     "astropy",
     "requests",
+    "joblib",
     "irispy-lmsal",
     "named-arrays>=0.17.1",
 ]
