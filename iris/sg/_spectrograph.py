@@ -203,8 +203,6 @@ class SpectrographObservation(
 
         hdu_prototype = hdul_prototype[index_window]
 
-        time_start = astropy.time.Time(header_primary["STARTOBS"])
-
         wcs_prototype = astropy.wcs.WCS(hdu_prototype)
 
         axes_wcs = list(reversed(wcs_prototype.axis_type_names))
@@ -236,7 +234,6 @@ class SpectrographObservation(
         )
 
         for index in path.ndindex():
-
             file = path[index].ndarray
 
             hdul = astropy.io.fits.open(file)
@@ -268,6 +265,8 @@ class SpectrographObservation(
             timedelta_avg = np.diff(timedelta_frame).mean()
             timedelta_last = timedelta_frame[~0] + timedelta_avg
             timedelta_frame = np.append(timedelta_frame, timedelta_last)
+
+            time_start = astropy.time.Time(hdul[0].header["STARTOBS"])
 
             time = time_start + timedelta_frame
             time = na.ScalarArray(time.jd, axis_detector_x)
