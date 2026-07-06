@@ -48,3 +48,28 @@ class TestSpectrographObservation:
     def test_to_jshtml(self, array: iris.sg.SpectrographObservation):
         result = array.to_jshtml()
         assert isinstance(result, IPython.display.HTML)
+
+
+def test_empty_custom_axes():
+
+    axis_wavelength = "velocity"
+    axis_detector_x = "x"
+    axis_detector_y = "y"
+
+    result = iris.sg.SpectrographObservation.empty(
+        shape_base=dict(time=1),
+        shape_wcs={
+            axis_wavelength: 2,
+            axis_detector_x: 3,
+            axis_detector_y: 4,
+        },
+        axis_wavelength=axis_wavelength,
+        axis_detector_x=axis_detector_x,
+        axis_detector_y=axis_detector_y,
+    )
+
+    axes = {axis_wavelength, axis_detector_x, axis_detector_y}
+    assert set(result.inputs.crpix.components) == axes
+    assert set(result.inputs.pc.wavelength.components) == axes
+    assert set(result.inputs.pc.position.x.components) == axes
+    assert set(result.inputs.pc.position.y.components) == axes

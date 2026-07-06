@@ -369,11 +369,11 @@ class SpectrographObservation(
                 ),
             ),
             crpix=na.CartesianNdVectorArray(
-                components=dict(
-                    wavelength=na.ScalarArray.zeros(shape_base),
-                    detector_x=na.ScalarArray.zeros(shape_base),
-                    detector_y=na.ScalarArray.zeros(shape_base),
-                )
+                components={
+                    axis_wavelength: na.ScalarArray.zeros(shape_base),
+                    axis_detector_x: na.ScalarArray.zeros(shape_base),
+                    axis_detector_y: na.ScalarArray.zeros(shape_base),
+                }
             ),
             cdelt=na.SpectralPositionalVectorArray(
                 wavelength=na.ScalarArray.zeros(shape_base) << u.AA,
@@ -384,26 +384,26 @@ class SpectrographObservation(
             ),
             pc=na.SpectralPositionalMatrixArray(
                 wavelength=na.CartesianNdVectorArray(
-                    components=dict(
-                        wavelength=na.ScalarArray.zeros(shape_base),
-                        detector_x=na.ScalarArray.zeros(shape_base),
-                        detector_y=na.ScalarArray.zeros(shape_base),
-                    ),
+                    components={
+                        axis_wavelength: na.ScalarArray.zeros(shape_base),
+                        axis_detector_x: na.ScalarArray.zeros(shape_base),
+                        axis_detector_y: na.ScalarArray.zeros(shape_base),
+                    },
                 ),
                 position=na.Cartesian2dMatrixArray(
                     x=na.CartesianNdVectorArray(
-                        components=dict(
-                            wavelength=na.ScalarArray.zeros(shape_base),
-                            detector_x=na.ScalarArray.zeros(shape_base),
-                            detector_y=na.ScalarArray.zeros(shape_base),
-                        ),
+                        components={
+                            axis_wavelength: na.ScalarArray.zeros(shape_base),
+                            axis_detector_x: na.ScalarArray.zeros(shape_base),
+                            axis_detector_y: na.ScalarArray.zeros(shape_base),
+                        },
                     ),
                     y=na.CartesianNdVectorArray(
-                        components=dict(
-                            wavelength=na.ScalarArray.zeros(shape_base),
-                            detector_x=na.ScalarArray.zeros(shape_base),
-                            detector_y=na.ScalarArray.zeros(shape_base),
-                        ),
+                        components={
+                            axis_wavelength: na.ScalarArray.zeros(shape_base),
+                            axis_detector_x: na.ScalarArray.zeros(shape_base),
+                            axis_detector_y: na.ScalarArray.zeros(shape_base),
+                        },
                     ),
                 ),
             ),
