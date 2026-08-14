@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u
 import astropy.time
+import astropy.io.fits
+import astropy.wcs
 import iris
 
 
@@ -73,3 +75,75 @@ def test_empty_custom_axes():
     assert set(result.inputs.pc.wavelength.components) == axes
     assert set(result.inputs.pc.position.x.components) == axes
     assert set(result.inputs.pc.position.y.components) == axes
+
+
+def test_inputs_against_astropy_wcs():
+    """
+    The coordinates must be the ones :mod:`astropy.wcs` makes of the same file.
+
+    The keywords are put into the formula in the WCS paper, which is written
+    out correctly, but that formula is given pixel coordinates counted from
+    zero while `CRPIX` counts them from one. An implementation which knows
+    nothing about this one is asked the same question, and is asked it on
+    every axis: the wavelength axis is the one where a pixel is worth about
+    3 km/s and would go unnoticed as an offset in Doppler shift.
+
+    Built from a file rather than a time range, so that the coordinates and
+    the keywords they are checked against come from the same file and not
+    from two which happen to have been found by the same search.
+    """
+    window = "Si IV 1394"
+
+    urls = iris.data.urls_hek(
+        time_start=astropy.time.Time("2021-09-23T06:00"),
+        time_stop=astropy.time.Time("2021-09-23T07:00"),
+        spectrograph=True,
+        sji=False,
+    )
+    path = iris.data.decompress(iris.data.download(urls[:1]))[0]
+
+    result = iris.sg.SpectrographObservation.from_fits(path, window=window)
+
+    hdul = astropy.io.fits.open(path)
+    windows = [hdul[0].header.get(f"TDESC{h}") for h in range(len(hdul))]
+    wcs = astropy.wcs.WCS(hdul[windows.index(window)])
+
+    names = list(wcs.axis_type_names)
+
+    # Without the projection, which :class:`named_arrays.AbstractWcsVector`
+    # does not apply: it is the linear part of the transformation, and this
+    # is a comparison of that against the same thing. Over a field this size
+    # the projection is worth a few times ten to the minus five arcseconds
+    # either way, so leaving it in would not hide the pixel this is looking
+    # for, but taking it out makes the two answers the same answer.
+    wcs.wcs.ctype = names
+    columns = {
+        "WAVE": result.axis_wavelength,
+        "HPLN": result.axis_detector_x,
+        "HPLT": result.axis_detector_y,
+    }
+
+    inputs = result.inputs
+    shape = inputs.shape_wcs
+
+    def value(quantity, unit):
+        # Only the axes it has: the wavelength does not vary along the slit,
+        # and `pc` says so, but the two spatial axes are mixed by the roll
+        # and each depends on both.
+        return quantity[{a: index[a] for a in quantity.shape}].ndarray.to_value(unit)
+
+    for corner in ((0, 0, 0), (1, 2, 3), (0, -1, -1), (-1, -1, -1)):
+        index = {
+            columns[name]: corner[i] % shape[columns[name]]
+            for i, name in enumerate(names)
+        }
+
+        # Astropy counts pixels from zero here, and the vertex of index `j`
+        # lies half a pixel below the center of pixel `j`.
+        pixel = [[index[columns[name]] - 0.5 for name in names]]
+        expected = wcs.wcs_pix2world(pixel, 0)[0]
+        expected = {name: expected[i] for i, name in enumerate(names)}
+
+        assert np.isclose(value(inputs.wavelength, u.m), expected["WAVE"], rtol=1e-10)
+        assert np.isclose(value(inputs.position.x, u.deg), expected["HPLN"], rtol=1e-10)
+        assert np.isclose(value(inputs.position.y, u.deg), expected["HPLT"], rtol=1e-10)
