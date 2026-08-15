@@ -54,6 +54,10 @@ def effective_area(
     wavelength
         The wavelength of the incident light at which to evaluate the effective
         area.
+        Wavelengths outside the nominal spectral ranges of the FUV and NUV
+        bands come back as NaN, following `irispy-lmsal` 0.8.1: the response
+        file does not define the effective area there, and a number
+        interpolated from nothing would be mistaken for a calibration.
 
     Examples
     --------
