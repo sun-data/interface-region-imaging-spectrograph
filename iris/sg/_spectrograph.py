@@ -279,10 +279,19 @@ class SpectrographObservation(
             crval.position.x[index] = wcs.crval[~ix] << u.deg
             crval.position.y[index] = wcs.crval[~iy] << u.deg
 
+            # One less than the FITS keyword, which counts pixels from one
+            # where :class:`named_arrays.AbstractWcsVector` counts them from
+            # zero. The formula they are put into is the one in the WCS
+            # paper, but the pixel coordinates it is given come from
+            # :func:`named_arrays.indices` and so start at zero, and a
+            # reference point measured from the other end of the first pixel
+            # moves everything by one: a third of an arcsecond across the
+            # raster, a sixth along the slit, and, on the wavelength axis,
+            # about 3 km/s of Doppler shift.
             crpix = self.inputs.crpix
-            crpix.components[axis_wavelength][index] = wcs.crpix[~iw]
-            crpix.components[axis_detector_x][index] = wcs.crpix[~ix]
-            crpix.components[axis_detector_y][index] = wcs.crpix[~iy]
+            crpix.components[axis_wavelength][index] = wcs.crpix[~iw] - 1
+            crpix.components[axis_detector_x][index] = wcs.crpix[~ix] - 1
+            crpix.components[axis_detector_y][index] = wcs.crpix[~iy] - 1
 
             cdelt = self.inputs.cdelt
             cdelt.wavelength[index] = wcs.cdelt[~iw] << u.m
