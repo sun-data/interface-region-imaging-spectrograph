@@ -25,7 +25,7 @@ __all__ = [
 @dataclasses.dataclass(eq=False, repr=False)
 class SpectrographObservation(
     na.FunctionArray[
-        na.AbstractTemporalSpectralPositionalVectorArray,
+        na.ExplicitTemporalWcsDopplerPositionalVectorArray,
         na.AbstractScalarArray,
     ]
 ):
