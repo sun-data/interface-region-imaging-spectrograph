@@ -4,6 +4,7 @@ import dataclasses
 import pathlib
 import IPython.display
 import numpy as np
+import matplotlib.animation
 import matplotlib.colors
 import matplotlib.axes
 import matplotlib.pyplot as plt
