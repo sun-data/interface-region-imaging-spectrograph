@@ -1,0 +1,48 @@
+name: typing
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# `iris` does not type-check cleanly yet, so this job enforces a ceiling
+# instead of demanding zero: the count may fall, never rise.  Lower `ceiling`
+# in the same pull request that removes the errors.
+#
+# The count also moves when an untyped dependency is released, because what
+# `pyright` can infer about it changes: `astropy` 8.0.1 reports three errors
+# that 7.2.0 does not, all of them `quantity_support` returning a converter
+# whose `__exit__` it cannot see.  A raise that a pull request did not cause is
+# a dependency release, not a regression.
+env:
+  ceiling: 408
+
+jobs:
+  pyright:
+    name: Check type annotations with pyright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test]
+          pip install pyright==1.1.411
+      - name: Count the errors reported by pyright
+        run: |
+          pyright --outputjson > pyright.json || true
+          count=$(python -c "import json; print(json.load(open('pyright.json'))['summary']['errorCount'])")
+          echo "pyright reports $count errors, ceiling is $ceiling"
+          if [ "$count" -gt "$ceiling" ]; then
+            pyright || true
+            echo "::error::the error count rose from $ceiling to $count"
+            exit 1
+          fi
+          if [ "$count" -lt "$ceiling" ]; then
+            echo "::notice::the ceiling can be lowered from $ceiling to $count"
+          fi
