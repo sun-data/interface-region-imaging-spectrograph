@@ -49,3 +49,15 @@ Documentation = "https://interface-region-imaging-spectrograph.readthedocs.io/en
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
+
+[tool.setuptools.package-data]
+iris = ["py.typed"]
+
+[tool.pyright]
+include = ["iris"]
+# The tests are excluded because `astropy` does not ship a `py.typed` marker.
+# Expressions such as `numpy.linspace(...) * astropy.units.mm`, which the tests
+# use heavily, are therefore inferred as a union of unit types rather than as a
+# `Quantity`, and silencing that requires more noise than the tests are worth.
+exclude = ["**/_tests", "**/*_test.py", "**/__pycache__"]
+typeCheckingMode = "standard"
