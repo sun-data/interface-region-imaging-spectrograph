@@ -21,7 +21,7 @@ dependencies = [
     "requests",
     "joblib",
     "irispy-lmsal>=0.8.1",
-    "named-arrays~=2.0",
+    "named-arrays~=2.9",
 ]
 dynamic = ["version"]
 
