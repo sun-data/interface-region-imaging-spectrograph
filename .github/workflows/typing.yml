@@ -16,7 +16,7 @@ on:
 # whose `__exit__` it cannot see.  A raise that a pull request did not cause is
 # a dependency release, not a regression.
 env:
-  ceiling: 408
+  ceiling: 239
 
 jobs:
   pyright:
