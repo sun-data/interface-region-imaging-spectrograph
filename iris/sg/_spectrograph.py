@@ -746,8 +746,11 @@ class SpectrographObservation(
 
         # The sums of the resampled values and of the resampled coverage,
         # whose ratio is the coverage-weighted mean.
-        unit = na.unit_normalized(outputs)
-        unit_timedelta = na.unit_normalized(timedelta)
+        # `unit_normalized` is declared to return an array as well as a unit,
+        # since a vector has one unit per component, but these are scalars
+        # and so have just the one between them.
+        unit = cast(u.UnitBase, na.unit_normalized(outputs))
+        unit_timedelta = cast(u.UnitBase, na.unit_normalized(timedelta))
 
         shape = tuple(shape_wcs[a] for a in axes)
         num_outputs = np.zeros(shape)
