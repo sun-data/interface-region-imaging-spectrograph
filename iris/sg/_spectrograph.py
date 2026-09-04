@@ -66,13 +66,15 @@ def _extent(a: na.ScalarArray) -> tuple[u.Quantity, u.Quantity]:
     return u.Quantity(ndarray.min()), u.Quantity(ndarray.max())
 
 
-def _value(a: np.ndarray, unit: Any) -> np.ndarray:
+def _value(a: np.ndarray, unit: u.UnitBase) -> np.ndarray:
     """
-    Strip the unit from an array, which may or may not have one.
+    Strip a known unit from an array.
+
+    The unit comes from :func:`named_arrays.unit_normalized`, which answers
+    with a dimensionless unit rather than :obj:`None`, so there is no
+    unitless case to handle separately.
     """
-    if isinstance(unit, u.UnitBase):
-        return np.asarray(u.Quantity(a).to_value(unit))
-    return np.asarray(a)
+    return np.asarray(u.Quantity(a).to_value(unit))
 
 
 def _ratio(a: Any, b: Any) -> float:
@@ -579,25 +581,37 @@ class SpectrographObservation(
         Examples
         --------
 
-        Assemble the first two tiles of the mosaic captured on 2026-09-02
-        and display the result as a false-color image.
+        Assemble a sequence of five rasters, whose pointing drifts by about
+        an arcsecond between the first and the last, into a single image.
 
         .. jupyter-execute::
 
             import iris
 
-            # Load the tiles as a sequence of rasters
+            # Load a sequence of rasters
             tiles = iris.sg.open(
-                time="2026-09-02T04:45",
-                time_stop="2026-09-02T07:00",
-                obs_id=3600108078,
+                time="2017-02-11T04:50",
+                time_stop="2017-02-11T05:00",
             )
 
-            # Assemble the tiles into a single image
+            # Assemble the rasters into a single image
             mosaic = tiles.mosaic()
 
             # Display the mosaic as a false-color image
             mosaic.show();
+
+        A full-Sun mosaic is assembled the same way, by asking for the
+        OBSID which took it. That is tens of gigabytes of raster, so it is
+        not run here:
+
+        .. code-block:: python
+
+            tiles = iris.sg.open(
+                time="2026-09-02T04:45",
+                time_stop="2026-09-03T00:00",
+                obs_id=3600108078,
+            )
+            mosaic = tiles.mosaic()
         """
 
         axis_time = self.axis_time
@@ -732,8 +746,8 @@ class SpectrographObservation(
 
         # The sums of the resampled values and of the resampled coverage,
         # whose ratio is the coverage-weighted mean.
-        unit = na.unit(outputs)
-        unit_timedelta = na.unit(timedelta)
+        unit = na.unit_normalized(outputs)
+        unit_timedelta = na.unit_normalized(timedelta)
 
         shape = tuple(shape_wcs[a] for a in axes)
         num_outputs = np.zeros(shape)
@@ -865,10 +879,8 @@ class SpectrographObservation(
         outputs_result[den_outputs == 0] = np.nan
         timedelta_result[den_timedelta == 0] = np.nan
 
-        if isinstance(unit, u.UnitBase):
-            outputs_result = u.Quantity(outputs_result, unit)
-        if isinstance(unit_timedelta, u.UnitBase):
-            timedelta_result = u.Quantity(timedelta_result, unit_timedelta)
+        outputs_result = u.Quantity(outputs_result, unit)
+        timedelta_result = u.Quantity(timedelta_result, unit_timedelta)
 
         # Vertices which no tile covers have no time, and are masked.
         # The value underneath the mask is the mean time of the rest,
