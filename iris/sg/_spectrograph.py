@@ -674,9 +674,9 @@ class SpectrographObservation(
         # Vertices of a tile with a masked time, which a mosaic has where no
         # tile covered it, are NaN here, and so contribute nothing below.
         time = astropy.time.Time(_scalar(inputs.time).ndarray)
-        jd = np.array(time.jd, dtype=float)
-        jd[np.asarray(time.mask, dtype=bool)] = np.nan
-        jd = na.ScalarArray(jd, axes=inputs.time.axes)
+        jd_ndarray = np.array(time.jd, dtype=float)
+        jd_ndarray[np.asarray(time.mask, dtype=bool)] = np.nan
+        jd = na.ScalarArray(jd_ndarray, axes=inputs.time.axes)
 
         if epoch is not None:
             # Every tile is carried to `epoch` before any of them are placed,
@@ -685,14 +685,17 @@ class SpectrographObservation(
             # are rotated as though taken at the middle of the observation;
             # they carry no data, so where they land does not matter.
             jd_rotate = np.where(
-                np.isfinite(jd.ndarray), jd.ndarray, np.nanmean(jd.ndarray)
+                np.isfinite(jd_ndarray), jd_ndarray, np.nanmean(jd_ndarray)
             )
             position = _vector(
                 utu.rotation.rotate(
                     position=position,
                     time=na.ScalarArray(
-                        ndarray=astropy.time.Time(jd_rotate, format="jd"),
-                        axes=jd.axes,
+                        ndarray=cast(
+                            np.ndarray,
+                            astropy.time.Time(jd_rotate, format="jd"),
+                        ),
+                        axes=inputs.time.axes,
                     ),
                     time_out=epoch,
                     off_disk="static",
