@@ -16,6 +16,7 @@ import astropy.wcs
 import astropy.io.fits
 import astropy.visualization
 import named_arrays as na
+import utu
 import iris
 
 __all__ = [
@@ -553,6 +554,7 @@ class SpectrographObservation(
     def mosaic(
         self,
         cdelt: None | u.Quantity | na.AbstractCartesian2dVectorArray = None,
+        epoch: None | astropy.time.Time = None,
     ) -> Self:
         """
         Assemble the rasters along the time axis into a single mosaic.
@@ -567,7 +569,7 @@ class SpectrographObservation(
         and pixels which no tile covers are NaN.
 
         The tiles are placed at the helioprojective coordinates recorded in
-        their headers, no correction for solar rotation is applied.
+        their headers unless `epoch` says otherwise.
         The time of each vertex of the result is the mean time of the tile
         pixels within half a pixel of it, and is masked where there are none.
 
@@ -577,6 +579,36 @@ class SpectrographObservation(
             The plate scale of the mosaic.
             If :obj:`None`, the plate scale of the first tile is used.
             If a scalar, the same plate scale is used for both spatial axes.
+        epoch
+            The time to carry every tile to before assembling them, undoing
+            the rotation of the Sun between the first tile and the last.
+            If :obj:`None` (the default), the tiles are left where they were
+            observed. See the notes below.
+
+        Notes
+        -----
+        A mosaic takes as long to make as it takes the instrument to walk
+        across the field, and the Sun turns while it does. The 2026-09-02
+        mosaic took seventeen hours, over which a feature at disk centre
+        moves about 130 arcsec, some four hundred pixels, so the same
+        feature can appear twice in neighbouring tiles.
+
+        Giving `epoch` a time carries every tile to where its material would
+        have been at that time, using :func:`utu.rotation.rotate`, before
+        the tiles are resampled onto the common grid. The tiles are then of
+        one moment rather than of the hours they were taken over. Nothing is
+        interpolated twice for it: the rotation moves the coordinates and the
+        same conservative resampling puts them on the grid.
+
+        The epoch is free, and only decides which tiles move and how far.
+        The middle of the observation halves the largest correction, and the
+        start of it registers the mosaic to the first tile. What no epoch can
+        undo is the Sun having changed: material carried seventeen hours is
+        put where it would have gone, not shown as it would have looked.
+
+        Points above the limb have no surface to be carried along, and are
+        left where they were seen rather than dropped, which is what keeps
+        the spicules in a mosaic reaching past the limb.
 
         Examples
         --------
@@ -645,6 +677,27 @@ class SpectrographObservation(
         jd = np.array(time.jd, dtype=float)
         jd[np.asarray(time.mask, dtype=bool)] = np.nan
         jd = na.ScalarArray(jd, axes=inputs.time.axes)
+
+        if epoch is not None:
+            # Every tile is carried to `epoch` before any of them are placed,
+            # so that the grid below is the one the rotated tiles need. The
+            # vertices without a time, which only a mosaic of a mosaic has,
+            # are rotated as though taken at the middle of the observation;
+            # they carry no data, so where they land does not matter.
+            jd_rotate = np.where(
+                np.isfinite(jd.ndarray), jd.ndarray, np.nanmean(jd.ndarray)
+            )
+            position = _vector(
+                utu.rotation.rotate(
+                    position=position,
+                    time=na.ScalarArray(
+                        ndarray=astropy.time.Time(jd_rotate, format="jd"),
+                        axes=jd.axes,
+                    ),
+                    time_out=epoch,
+                    off_disk="static",
+                )
+            )
 
         if cdelt is None:
             cdelt_first = select(inputs.cdelt.position, 0)

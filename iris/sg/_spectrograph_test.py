@@ -204,6 +204,80 @@ def test_mosaic_synthetic():
     )
 
 
+def test_mosaic_epoch():
+    """
+    An epoch carries each tile to where its material would then have been.
+
+    The two synthetic tiles are a day apart, over which the Sun turns by
+    about a fifth of its radius. Carrying the second back to the time of the
+    first undoes that turning, so it lands east of where it was seen, by far
+    more than the tiles are wide. The first tile is at the epoch already and
+    must not move at all.
+    """
+    array = _observation_synthetic()
+
+    epoch = astropy.time.Time(array.inputs.time.ndarray.jd.min(), format="jd")
+
+    plain = array.mosaic()
+    rotated = array.mosaic(epoch=epoch)
+
+    def covered(mosaic):
+        """The x of the first and last column holding any data."""
+        where = np.isfinite(mosaic.outputs).any(("detector_y", "wavelength"))
+        where = where.ndarray_aligned(("detector_x",))
+        x = mosaic.inputs.position.x.ndarray_aligned(("detector_x", "detector_y"))
+        x = x[:, 0].to_value(u.arcsec)
+        return x[:-1][where].min(), x[1:][where].max()
+
+    east_plain, west_plain = covered(plain)
+    east_rotated, west_rotated = covered(rotated)
+
+    # Left alone, the two tiles sit side by side and span a few arcseconds.
+    assert west_plain - east_plain < 20
+
+    # Carried to the epoch they no longer overlap at all, because a day of
+    # rotation is far wider than they are.
+    assert west_rotated - east_rotated > 200
+
+    # It is the later tile which moves, and it moves east, against the way
+    # the Sun turns. The tile at the epoch stays where it was, so the mosaic
+    # still reaches as far west as that tile ever did.
+    assert east_rotated < east_plain - 100
+    assert np.isclose(west_rotated, 5.5, atol=1.0)
+
+    # Nothing is lost in the carrying.
+    assert np.nansum(rotated.outputs) > 0 * u.DN
+    assert np.isfinite(rotated.timedelta).any()
+
+
+def test_mosaic_epoch_identity():
+    """
+    An epoch every tile already sits at changes nothing worth seeing.
+
+    The tiles of this observation share no time, so there is no epoch which
+    leaves them all alone; one which is the time of both is made by giving
+    them one. What is then asked is that rotating by nothing is nothing.
+    """
+    array = _observation_synthetic()
+
+    jd = array.inputs.time.ndarray.jd
+    array.inputs.time.ndarray = astropy.time.Time(
+        np.full(jd.shape, jd.min()),
+        format="jd",
+    )
+    epoch = astropy.time.Time(jd.min(), format="jd")
+
+    plain = array.mosaic()
+    rotated = array.mosaic(epoch=epoch)
+
+    assert rotated.shape == plain.shape
+    np.testing.assert_allclose(
+        rotated.outputs.value.ndarray,
+        plain.outputs.value.ndarray,
+        atol=1e-6,
+    )
+
+
 def test_mosaic_cdelt():
     """
     A coarser mosaic of flat tiles is still flat, and has fewer pixels.
