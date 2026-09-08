@@ -14,9 +14,12 @@ on:
 # `pyright` can infer about it changes: `astropy` 8.0.1 reports three errors
 # that 7.2.0 does not, all of them `quantity_support` returning a converter
 # whose `__exit__` it cannot see.  A raise that a pull request did not cause is
-# a dependency release, not a regression.
+# a dependency release, not a regression.  It falls for the same reason:
+# `named-arrays` 2.10 named the first argument of `__array_ufunc__` what
+# `numpy`'s protocol calls it, which stopped every ufunc on a named array
+# being an error and took thirty-seven of these away at once.
 env:
-  ceiling: 239
+  ceiling: 202
 
 jobs:
   pyright:
