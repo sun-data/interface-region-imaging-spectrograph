@@ -501,6 +501,72 @@ class SpectrographObservation(
             axis_detector_y=axis_detector_y,
         )
 
+    def _julian_date(self) -> na.ScalarArray:
+        """
+        The time of each vertex as a Julian date, NaN where it is masked.
+
+        Only a mosaic of a mosaic has masked times, at the vertices no tile
+        reached. They carry no data, so what matters is that they are NaN
+        here and can be told apart, not what they are.
+        """
+        time = astropy.time.Time(_scalar(self.inputs.time).ndarray)
+        jd = np.array(time.jd, dtype=float)
+        jd[np.asarray(time.mask, dtype=bool)] = np.nan
+        return na.ScalarArray(jd, axes=self.inputs.time.axes)
+
+    def _epoch(self, epoch: None | str | astropy.time.Time) -> None | astropy.time.Time:
+        """
+        The time to carry the observation to, however it was asked for.
+        """
+        if epoch is None:
+            return None
+
+        if isinstance(epoch, str):
+            if epoch != "auto":  # pragma: nocover
+                raise ValueError(f"{epoch=} must be 'auto' or a time")
+            jd = self._julian_date().ndarray_aligned(tuple(self.inputs.time.shape))
+            middle = (np.nanmin(jd) + np.nanmax(jd)) / 2
+            return astropy.time.Time(middle, format="jd")
+
+        return epoch
+
+    def _position(
+        self,
+        epoch: None | astropy.time.Time,
+    ) -> na.Cartesian2dVectorArray[na.ScalarArray, na.ScalarArray]:
+        """
+        Where each vertex is, carried to `epoch` if there is one.
+
+        Vertices without a time, which only a mosaic of a mosaic has, are
+        carried as though observed in the middle of the observation. They
+        hold no data, so where they land does not matter.
+        """
+        position = _vector(self.inputs.position)
+
+        if epoch is None:
+            return position
+
+        jd = self._julian_date()
+        jd_ndarray = jd.ndarray_aligned(tuple(jd.shape))
+        jd_rotate = np.where(
+            np.isfinite(jd_ndarray), jd_ndarray, np.nanmean(jd_ndarray)
+        )
+
+        return _vector(
+            utu.rotation.rotate(
+                position=position,
+                time=na.ScalarArray(
+                    ndarray=cast(
+                        np.ndarray,
+                        astropy.time.Time(jd_rotate, format="jd"),
+                    ),
+                    axes=jd.axes,
+                ),
+                time_out=epoch,
+                off_disk="static",
+            )
+        )
+
     @property
     def radiance(self) -> Self:
         """
@@ -543,7 +609,7 @@ class SpectrographObservation(
     def mosaic(
         self,
         cdelt: None | u.Quantity | na.AbstractCartesian2dVectorArray = None,
-        epoch: None | astropy.time.Time = None,
+        epoch: None | str | astropy.time.Time = None,
     ) -> Self:
         """
         Assemble the rasters along the time axis into a single mosaic.
@@ -572,7 +638,9 @@ class SpectrographObservation(
             The time to carry every tile to before assembling them, undoing
             the rotation of the Sun between the first tile and the last.
             If :obj:`None` (the default), the tiles are left where they were
-            observed. See the notes below.
+            observed. If ``"auto"``, the middle of the observation is used,
+            which is the time that halves the largest correction.
+            See the notes below.
 
         Notes
         -----
@@ -590,8 +658,9 @@ class SpectrographObservation(
         same conservative resampling puts them on the grid.
 
         The epoch is free, and only decides which tiles move and how far.
-        The middle of the observation halves the largest correction, and the
-        start of it registers the mosaic to the first tile. What no epoch can
+        ``"auto"`` is the middle of the observation, which halves the largest
+        correction; giving the time of the first tile instead registers the
+        mosaic to that tile. What no epoch can
         undo is the Sun having changed: material carried seventeen hours is
         put where it would have gone, not shown as it would have looked.
 
@@ -654,41 +723,17 @@ class SpectrographObservation(
             raise ValueError("every tile must have the same rest wavelength")
         wavelength_rest = select(wavelength_rest, 0)
 
-        position = _vector(inputs.position)
         wavelength = _scalar(inputs.wavelength)
         outputs = _scalar(self.outputs)
         timedelta = _scalar(self.timedelta)
 
         # Vertices of a tile with a masked time, which a mosaic has where no
         # tile covered it, are NaN here, and so contribute nothing below.
-        time = astropy.time.Time(_scalar(inputs.time).ndarray)
-        jd_ndarray = np.array(time.jd, dtype=float)
-        jd_ndarray[np.asarray(time.mask, dtype=bool)] = np.nan
-        jd = na.ScalarArray(jd_ndarray, axes=inputs.time.axes)
+        jd = self._julian_date()
 
-        if epoch is not None:
-            # Every tile is carried to `epoch` before any of them are placed,
-            # so that the grid below is the one the rotated tiles need. The
-            # vertices without a time, which only a mosaic of a mosaic has,
-            # are rotated as though taken at the middle of the observation;
-            # they carry no data, so where they land does not matter.
-            jd_rotate = np.where(
-                np.isfinite(jd_ndarray), jd_ndarray, np.nanmean(jd_ndarray)
-            )
-            position = _vector(
-                utu.rotation.rotate(
-                    position=position,
-                    time=na.ScalarArray(
-                        ndarray=cast(
-                            np.ndarray,
-                            astropy.time.Time(jd_rotate, format="jd"),
-                        ),
-                        axes=inputs.time.axes,
-                    ),
-                    time_out=epoch,
-                    off_disk="static",
-                )
-            )
+        # Every tile is carried to `epoch` before any of them are placed, so
+        # that the grid below is the one the rotated tiles need.
+        position = self._position(self._epoch(epoch))
 
         if cdelt is None:
             cdelt_first = select(inputs.cdelt.position, 0)
@@ -1086,6 +1131,7 @@ class SpectrographObservation(
         vmax: None | na.ArrayLike = None,
         velocity_min: u.Quantity = -100 * u.km / u.s,
         velocity_max: u.Quantity = +100 * u.km / u.s,
+        epoch: None | str | astropy.time.Time = None,
         cbar_fraction: float = 0.1,
     ) -> matplotlib.animation.FuncAnimation:
         """
@@ -1106,10 +1152,18 @@ class SpectrographObservation(
             The minimum Doppler velocity of the data range.
         velocity_max
             The maximum Doppler velocity of the data range.
+        epoch
+            The time to carry the observation to, undoing the rotation of
+            the Sun over the frames so that a feature stays where it is
+            instead of drifting west across the animation.
+            If :obj:`None` (the default), the frames are left where they
+            were observed. If ``"auto"``, the middle of the observation is
+            used, which is the time that halves the largest correction.
         cbar_fraction
             The fraction of the space to use for the colorbar axes.
         """
         wavelength_center = self.inputs.wavelength_rest
+        position = self._position(self._epoch(epoch))
 
         axis_time = self.axis_time
         axis_wavelength = self.axis_wavelength
@@ -1138,8 +1192,8 @@ class SpectrographObservation(
             ax[1].xaxis.set_label_position("top")
             ax[1].ticklabel_format(useOffset=False)
             ax2 = ax[1].twinx()
-            x = self.inputs.position.x
-            y = self.inputs.position.y
+            x = position.x
+            y = position.y
             ani, colorbar = na.plt.rgbmovie(
                 self.inputs.time.mean(axis_x),
                 self.inputs.velocity,
@@ -1191,6 +1245,7 @@ class SpectrographObservation(
         vmax: None | na.ArrayLike = None,
         velocity_min: u.Quantity = -100 * u.km / u.s,
         velocity_max: u.Quantity = +100 * u.km / u.s,
+        epoch: None | str | astropy.time.Time = None,
         cbar_fraction: float = 0.1,
         fps: None | float = None,
     ) -> IPython.display.HTML:
@@ -1212,6 +1267,13 @@ class SpectrographObservation(
             The minimum Doppler velocity of the data range.
         velocity_max
             The maximum Doppler velocity of the data range.
+        epoch
+            The time to carry the observation to, undoing the rotation of
+            the Sun over the frames so that a feature stays where it is
+            instead of drifting west across the animation.
+            If :obj:`None` (the default), the frames are left where they
+            were observed. If ``"auto"``, the middle of the observation is
+            used, which is the time that halves the largest correction.
         cbar_fraction
             The fraction of the space to use for the colorbar axes.
         fps
@@ -1223,6 +1285,7 @@ class SpectrographObservation(
             vmax=vmax,
             velocity_min=velocity_min,
             velocity_max=velocity_max,
+            epoch=epoch,
             cbar_fraction=cbar_fraction,
         )
 

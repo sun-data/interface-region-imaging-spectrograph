@@ -250,6 +250,62 @@ def test_mosaic_epoch():
     assert np.isfinite(rotated.timedelta).any()
 
 
+def test_epoch_auto():
+    """
+    Asked for automatically, the epoch is the middle of the observation.
+
+    The synthetic tiles are a day apart, so the middle is half a day from
+    either, and asking for that time by name has to give the same answer.
+    """
+    array = _observation_synthetic()
+
+    jd = array.inputs.time.ndarray.jd
+    middle = astropy.time.Time((jd.min() + jd.max()) / 2, format="jd")
+
+    assert np.isclose(array._epoch("auto").jd, middle.jd, atol=1e-9)
+    assert array._epoch(None) is None
+    assert array._epoch(middle) is middle
+
+    automatic = array.mosaic(epoch="auto")
+    named = array.mosaic(epoch=middle)
+
+    assert automatic.shape == named.shape
+    np.testing.assert_allclose(
+        automatic.outputs.value.ndarray,
+        named.outputs.value.ndarray,
+        atol=1e-8,
+    )
+
+    # The middle is not either end, so it is not the same as no epoch at all.
+    assert automatic.shape != array.mosaic().shape
+
+
+def test_to_jshtml_epoch():
+    """
+    An animation can be asked to undo the rotation over its frames.
+
+    What it draws is checked through the coordinates the epoch produces,
+    since the animation itself is HTML and says nothing about where things
+    were put.
+    """
+    array = _observation_synthetic()
+
+    result = array.to_jshtml(epoch="auto")
+    assert isinstance(result, IPython.display.HTML)
+
+    still = array._position(None)
+    carried = array._position(array._epoch("auto"))
+
+    assert na.shape(carried) == na.shape(still)
+
+    # The first tile is half a day before the middle and the second half a
+    # day after, so they are carried opposite ways and neither stays.
+    shift = (carried.x - still.x).ndarray.to_value(u.arcsec)
+    assert np.all(np.isfinite(shift))
+    assert shift[0].mean() > 100, "the earlier tile is carried west"
+    assert shift[1].mean() < -100, "the later tile is carried east"
+
+
 def test_mosaic_epoch_identity():
     """
     An epoch every tile already sits at changes nothing worth seeing.
