@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Any, Callable, Mapping, TypeVar, cast
 from typing_extensions import Self
 import dataclasses
 import pathlib
@@ -16,11 +16,77 @@ import astropy.wcs
 import astropy.io.fits
 import astropy.visualization
 import named_arrays as na
+import utu
 import iris
 
 __all__ = [
     "SpectrographObservation",
 ]
+
+_ArrayT = TypeVar("_ArrayT", bound=na.AbstractArray)
+
+
+def _index(a: _ArrayT, item: Mapping[str, int | slice]) -> _ArrayT:
+    """
+    Index an array without losing its type.
+
+    :meth:`named_arrays.AbstractArray.__getitem__` is declared to return the
+    abstract base class, which hides the components from the type checker.
+    """
+    return cast(_ArrayT, a[item])
+
+
+def _scalar(a: Any) -> na.ScalarArray:
+    """
+    Normalize a quantity or a scalar array to an explicit scalar array.
+    """
+    if isinstance(a, na.AbstractScalarArray):
+        return cast(na.ScalarArray, a.explicit)
+    return na.ScalarArray(a)
+
+
+def _vector(a: Any) -> na.Cartesian2dVectorArray[na.ScalarArray, na.ScalarArray]:
+    """
+    Normalize a 2D vector to one with explicit scalar array components.
+    """
+    return na.Cartesian2dVectorArray(x=_scalar(a.x), y=_scalar(a.y))
+
+
+def _quantity(a: na.ScalarArray) -> u.Quantity:
+    """
+    The value of a scalar array with no axes, as a quantity.
+    """
+    return u.Quantity(a.ndarray_aligned(tuple(a.shape)))
+
+
+def _extent(a: na.ScalarArray) -> tuple[u.Quantity, u.Quantity]:
+    """
+    The smallest and largest values of a scalar array, as quantities.
+    """
+    ndarray = a.ndarray_aligned(tuple(a.shape))
+    return u.Quantity(ndarray.min()), u.Quantity(ndarray.max())
+
+
+def _ratio(a: Any, b: Any) -> float:
+    """
+    The dimensionless ratio of two quantities, whatever their units.
+
+    Rounding a ratio like ``arcsec / deg`` before converting it would round
+    the wrong number, since :mod:`astropy` does not simplify the unit.
+    """
+    ratio = u.Quantity(a / b).to(u.dimensionless_unscaled)
+    return float(np.asarray(ratio))
+
+
+def _regrid(
+    weights: tuple[na.AbstractScalar, dict[str, int], dict[str, int]],
+    values: na.AbstractScalarArray,
+) -> na.ScalarArray:
+    """
+    Resample an array using weights from :func:`named_arrays.regridding.weights`.
+    """
+    result = na.regridding.regrid_from_weights(*weights, values_input=values)
+    return cast(na.ScalarArray, result)
 
 
 @dataclasses.dataclass(eq=False, repr=False)
@@ -435,6 +501,72 @@ class SpectrographObservation(
             axis_detector_y=axis_detector_y,
         )
 
+    def _julian_date(self) -> na.ScalarArray:
+        """
+        The time of each vertex as a Julian date, NaN where it is masked.
+
+        Only a mosaic of a mosaic has masked times, at the vertices no tile
+        reached. They carry no data, so what matters is that they are NaN
+        here and can be told apart, not what they are.
+        """
+        time = astropy.time.Time(_scalar(self.inputs.time).ndarray)
+        jd = np.array(time.jd, dtype=float)
+        jd[np.asarray(time.mask, dtype=bool)] = np.nan
+        return na.ScalarArray(jd, axes=self.inputs.time.axes)
+
+    def _epoch(self, epoch: None | str | astropy.time.Time) -> None | astropy.time.Time:
+        """
+        The time to carry the observation to, however it was asked for.
+        """
+        if epoch is None:
+            return None
+
+        if isinstance(epoch, str):
+            if epoch != "auto":  # pragma: nocover
+                raise ValueError(f"{epoch=} must be 'auto' or a time")
+            jd = self._julian_date().ndarray_aligned(tuple(self.inputs.time.shape))
+            middle = (np.nanmin(jd) + np.nanmax(jd)) / 2
+            return astropy.time.Time(middle, format="jd")
+
+        return epoch
+
+    def _position(
+        self,
+        epoch: None | astropy.time.Time,
+    ) -> na.Cartesian2dVectorArray[na.ScalarArray, na.ScalarArray]:
+        """
+        Where each vertex is, carried to `epoch` if there is one.
+
+        Vertices without a time, which only a mosaic of a mosaic has, are
+        carried as though observed in the middle of the observation. They
+        hold no data, so where they land does not matter.
+        """
+        position = _vector(self.inputs.position)
+
+        if epoch is None:
+            return position
+
+        jd = self._julian_date()
+        jd_ndarray = jd.ndarray_aligned(tuple(jd.shape))
+        jd_rotate = np.where(
+            np.isfinite(jd_ndarray), jd_ndarray, np.nanmean(jd_ndarray)
+        )
+
+        return _vector(
+            utu.rotation.rotate(
+                position=position,
+                time=na.ScalarArray(
+                    ndarray=cast(
+                        np.ndarray,
+                        astropy.time.Time(jd_rotate, format="jd"),
+                    ),
+                    axes=jd.axes,
+                ),
+                time_out=epoch,
+                off_disk="static",
+            )
+        )
+
     @property
     def radiance(self) -> Self:
         """
@@ -472,6 +604,404 @@ class SpectrographObservation(
         return dataclasses.replace(
             self,
             outputs=outputs,
+        )
+
+    def mosaic(
+        self,
+        cdelt: None | u.Quantity | na.AbstractCartesian2dVectorArray = None,
+        epoch: None | str | astropy.time.Time = None,
+    ) -> Self:
+        """
+        Assemble the rasters along the time axis into a single mosaic.
+
+        Each raster (a tile of the mosaic) is resampled onto a common grid
+        using :func:`named_arrays.regridding.regrid` with the ``conservative``
+        method, first along the wavelength axis, onto the wavelength grid
+        of the first tile, and then along the two spatial axes, onto an
+        axis-aligned helioprojective grid which covers every tile.
+        Each pixel of the result is the coverage-weighted mean of the tile
+        pixels overlapping it, so tiles which overlap are averaged,
+        and pixels which no tile covers are NaN.
+
+        The tiles are placed at the helioprojective coordinates recorded in
+        their headers unless `epoch` says otherwise.
+        The time of each vertex of the result is the mean time of the tile
+        pixels within half a pixel of it, and is masked where there are none.
+
+        Parameters
+        ----------
+        cdelt
+            The plate scale of the mosaic.
+            If :obj:`None`, the plate scale of the first tile is used.
+            If a scalar, the same plate scale is used for both spatial axes.
+        epoch
+            The time to carry every tile to before assembling them, undoing
+            the rotation of the Sun between the first tile and the last.
+            If :obj:`None` (the default), the tiles are left where they were
+            observed. If ``"auto"``, the middle of the observation is used,
+            which is the time that halves the largest correction.
+            See the notes below.
+
+        Notes
+        -----
+        A mosaic takes as long to make as it takes the instrument to walk
+        across the field, and the Sun turns while it does. The 2026-09-02
+        mosaic took seventeen hours, over which a feature at disk centre
+        moves about 130 arcsec, some four hundred pixels, so the same
+        feature can appear twice in neighbouring tiles.
+
+        Giving `epoch` a time carries every tile to where its material would
+        have been at that time, using :func:`utu.rotation.rotate`, before
+        the tiles are resampled onto the common grid. The tiles are then of
+        one moment rather than of the hours they were taken over. Nothing is
+        interpolated twice for it: the rotation moves the coordinates and the
+        same conservative resampling puts them on the grid.
+
+        The epoch is free, and only decides which tiles move and how far.
+        ``"auto"`` is the middle of the observation, which halves the largest
+        correction; giving the time of the first tile instead registers the
+        mosaic to that tile. What no epoch can
+        undo is the Sun having changed: material carried seventeen hours is
+        put where it would have gone, not shown as it would have looked.
+
+        Points above the limb have no surface to be carried along, and are
+        left where they were seen rather than dropped, which is what keeps
+        the spicules in a mosaic reaching past the limb.
+
+        Examples
+        --------
+
+        Assemble a sequence of five rasters, whose pointing drifts by about
+        an arcsecond between the first and the last, into a single image.
+
+        .. jupyter-execute::
+
+            import iris
+
+            # Load a sequence of rasters
+            tiles = iris.sg.open(
+                time="2017-02-11T04:50",
+                time_stop="2017-02-11T05:00",
+            )
+
+            # Assemble the rasters into a single image
+            mosaic = tiles.mosaic()
+
+            # Display the mosaic as a false-color image
+            mosaic.show();
+
+        A full-Sun mosaic is assembled the same way, by asking for the
+        OBSID which took it. That is tens of gigabytes of raster, so it is
+        not run here:
+
+        .. code-block:: python
+
+            tiles = iris.sg.open(
+                time="2026-09-02T04:45",
+                time_stop="2026-09-03T00:00",
+                obs_id=3600108078,
+            )
+            mosaic = tiles.mosaic()
+        """
+
+        axis_time = self.axis_time
+        axis_wavelength = self.axis_wavelength
+        axis_x = self.axis_detector_x
+        axis_y = self.axis_detector_y
+        axis_xy = (axis_x, axis_y)
+
+        inputs = self.inputs
+
+        def select(a: _ArrayT, index: int) -> _ArrayT:
+            """Pick one tile out of an array, if it varies from tile to tile."""
+            if axis_time in a.shape:
+                a = _index(a, {axis_time: index})
+            return a
+
+        wavelength_rest = _scalar(inputs.wavelength_rest)
+        if not (wavelength_rest == select(wavelength_rest, 0)).all():
+            raise ValueError("every tile must have the same rest wavelength")
+        wavelength_rest = select(wavelength_rest, 0)
+
+        wavelength = _scalar(inputs.wavelength)
+        outputs = _scalar(self.outputs)
+        timedelta = _scalar(self.timedelta)
+
+        # Vertices of a tile with a masked time, which a mosaic has where no
+        # tile covered it, are NaN here, and so contribute nothing below.
+        jd = self._julian_date()
+
+        # Every tile is carried to `epoch` before any of them are placed, so
+        # that the grid below is the one the rotated tiles need.
+        position = self._position(self._epoch(epoch))
+
+        if cdelt is None:
+            cdelt_first = select(inputs.cdelt.position, 0)
+            dx = _quantity(_scalar(cdelt_first.x))
+            dy = _quantity(_scalar(cdelt_first.y))
+        elif isinstance(cdelt, na.AbstractCartesian2dVectorArray):
+            dx = _quantity(_scalar(cdelt.x))
+            dy = _quantity(_scalar(cdelt.y))
+        else:
+            dx = dy = u.Quantity(cdelt)
+
+        # The grid of the mosaic is the smallest one, with the requested
+        # plate scale, which holds every vertex of every tile.
+        x_min, x_max = _extent(position.x)
+        y_min, y_max = _extent(position.y)
+        # Rounded first, so that a grid which already fits, like that
+        # of a mosaic, is not enlarged by a pixel by rounding error.
+        num_x = int(np.ceil(round(_ratio(x_max - x_min, dx), 6)))
+        num_y = int(np.ceil(round(_ratio(y_max - y_min, dy), 6)))
+        x_start = (x_min + x_max) / 2 - dx * num_x / 2
+        y_start = (y_min + y_max) / 2 - dy * num_y / 2
+
+        num_wavelength = self.shape[axis_wavelength]
+
+        shape_xy = {axis_x: num_x, axis_y: num_y}
+        shape_wcs = shape_xy | {axis_wavelength: num_wavelength}
+        vshape_wcs = {a: shape_wcs[a] + 1 for a in shape_wcs}
+        vshape_xy = {a: shape_xy[a] + 1 for a in shape_xy}
+
+        # The reference pixel is the first one, and `crval` is its center,
+        # which lies half a pixel inside the first vertex.
+        inputs_result = na.ExplicitTemporalWcsDopplerPositionalVectorArray(
+            time=na.ScalarArray.zeros(vshape_xy),
+            wavelength_rest=wavelength_rest,
+            crval=na.SpectralPositionalVectorArray(
+                wavelength=select(inputs.crval.wavelength, 0),
+                position=na.Cartesian2dVectorArray(
+                    x=na.ScalarArray(x_start + dx / 2),
+                    y=na.ScalarArray(y_start + dy / 2),
+                ),
+            ),
+            crpix=na.CartesianNdVectorArray(
+                components={
+                    axis_wavelength: select(
+                        inputs.crpix.components[axis_wavelength], 0
+                    ),
+                    axis_x: na.ScalarArray(0),
+                    axis_y: na.ScalarArray(0),
+                }
+            ),
+            cdelt=na.SpectralPositionalVectorArray(
+                wavelength=select(inputs.cdelt.wavelength, 0),
+                position=na.Cartesian2dVectorArray(
+                    x=na.ScalarArray(dx),
+                    y=na.ScalarArray(dy),
+                ),
+            ),
+            pc=na.SpectralPositionalMatrixArray(
+                wavelength=na.CartesianNdVectorArray(
+                    components={
+                        axis_wavelength: na.ScalarArray(1),
+                        axis_x: na.ScalarArray(0),
+                        axis_y: na.ScalarArray(0),
+                    },
+                ),
+                position=na.Cartesian2dMatrixArray(
+                    x=na.CartesianNdVectorArray(
+                        components={
+                            axis_wavelength: na.ScalarArray(0),
+                            axis_x: na.ScalarArray(1),
+                            axis_y: na.ScalarArray(0),
+                        },
+                    ),
+                    y=na.CartesianNdVectorArray(
+                        components={
+                            axis_wavelength: na.ScalarArray(0),
+                            axis_x: na.ScalarArray(0),
+                            axis_y: na.ScalarArray(1),
+                        },
+                    ),
+                ),
+            ),
+            shape_wcs=vshape_wcs,
+        )
+
+        wavelength_result = _scalar(inputs_result.wavelength)
+        position_result = _vector(inputs_result.position)
+
+        # A second spatial grid whose cells are centered on the vertices of
+        # the mosaic, onto which the times of the tiles are resampled.
+        position_vertex = na.Cartesian2dVectorArray(
+            x=na.ScalarArray(
+                x_start + dx * (np.arange(num_x + 2) - 0.5), axes=(axis_x,)
+            ),
+            y=na.ScalarArray(
+                y_start + dy * (np.arange(num_y + 2) - 0.5), axes=(axis_y,)
+            ),
+        )
+
+        # The sums of the resampled values and of the resampled coverage,
+        # whose ratio is the coverage-weighted mean. They carry the units of
+        # what goes into them, so nothing has to be taken off and put back.
+        # `unit_normalized` is declared to return an array as well as a unit,
+        # since a vector has one unit per component, but these are scalars
+        # and so have just the one between them.
+        unit = cast(u.UnitBase, na.unit_normalized(outputs))
+        unit_timedelta = cast(u.UnitBase, na.unit_normalized(timedelta))
+
+        num_outputs = na.ScalarArray.zeros(shape_wcs) << unit
+        den_outputs = na.ScalarArray.zeros(shape_wcs)
+
+        num_timedelta = na.ScalarArray.zeros(shape_xy) << unit_timedelta
+        den_timedelta = na.ScalarArray.zeros(shape_xy)
+
+        num_time = na.ScalarArray.zeros(vshape_xy)
+        den_time = na.ScalarArray.zeros(vshape_xy)
+
+        num_tiles = self.shape.get(axis_time, 1)
+
+        for i in range(num_tiles):
+
+            # NaN pixels of the tile contribute neither to the sum of the
+            # values nor to the coverage, so that they are averaged out
+            # rather than spread by the resampling.
+            values = select(outputs, i).explicit.copy()
+            where = np.isfinite(values)
+            values[~where] = 0 * unit
+            coverage = na.ScalarArray.zeros(values.shape)
+            coverage[where] = 1
+
+            weights_wavelength = na.regridding.weights(
+                coordinates_input=select(wavelength, i),
+                coordinates_output=wavelength_result,
+                axis_input=axis_wavelength,
+                axis_output=axis_wavelength,
+                method="conservative",
+            )
+            values_tile = _regrid(
+                weights=weights_wavelength,
+                values=values,
+            )
+            coverage_tile = _regrid(
+                weights=weights_wavelength,
+                values=coverage,
+            )
+
+            # Only the part of the mosaic which the tile can touch is
+            # resampled onto, with a margin of one pixel on every side.
+            position_tile = select(position, i)
+            x_min_tile, x_max_tile = _extent(position_tile.x)
+            y_min_tile, y_max_tile = _extent(position_tile.y)
+            ix0 = int(np.floor(_ratio(x_min_tile - x_start, dx)))
+            ix1 = int(np.ceil(_ratio(x_max_tile - x_start, dx)))
+            iy0 = int(np.floor(_ratio(y_min_tile - y_start, dy)))
+            iy1 = int(np.ceil(_ratio(y_max_tile - y_start, dy)))
+            ix0 = max(ix0 - 1, 0)
+            iy0 = max(iy0 - 1, 0)
+            ix1 = min(ix1 + 1, num_x)
+            iy1 = min(iy1 + 1, num_y)
+
+            index_cell = {
+                axis_x: slice(ix0, ix1),
+                axis_y: slice(iy0, iy1),
+            }
+            index_vertex = {
+                axis_x: slice(ix0, ix1 + 1),
+                axis_y: slice(iy0, iy1 + 1),
+            }
+            index_vertex_cell = {
+                axis_x: slice(ix0, ix1 + 2),
+                axis_y: slice(iy0, iy1 + 2),
+            }
+
+            weights_xy = na.regridding.weights(
+                coordinates_input=position_tile,
+                coordinates_output=_index(position_result, index_vertex),
+                axis_input=axis_xy,
+                axis_output=axis_xy,
+                method="conservative",
+            )
+            num_outputs[index_cell] = _index(num_outputs, index_cell) + _regrid(
+                weights=weights_xy,
+                values=values_tile,
+            )
+            den_outputs[index_cell] = _index(den_outputs, index_cell) + _regrid(
+                weights=weights_xy,
+                values=coverage_tile,
+            )
+
+            shape_tile = {a: position_tile.shape[a] - 1 for a in axis_xy}
+            ones_tile = na.ScalarArray.ones(shape_tile)
+            coverage_xy = _regrid(
+                weights=weights_xy,
+                values=ones_tile,
+            )
+
+            timedelta_tile = na.broadcast_to(select(timedelta, i), shape_tile)
+            num_timedelta[index_cell] = _index(num_timedelta, index_cell) + _regrid(
+                weights=weights_xy,
+                values=timedelta_tile,
+            )
+            den_timedelta[index_cell] = _index(den_timedelta, index_cell) + coverage_xy
+
+            # The time of a pixel of the tile is the mean of the times of
+            # the vertices around it, along whichever axes it varies.
+            jd_tile = select(jd, i)
+            for axis in axis_xy:
+                if axis in jd_tile.shape:
+                    lower = _index(jd_tile, {axis: slice(None, ~0)})
+                    upper = _index(jd_tile, {axis: slice(+1, None)})
+                    jd_tile = (lower + upper) / 2
+            jd_tile = na.broadcast_to(jd_tile, shape_tile).copy()
+
+            where_jd = np.isfinite(jd_tile)
+            jd_tile[~where_jd] = 0
+            coverage_jd = na.ScalarArray.zeros(shape_tile)
+            coverage_jd[where_jd] = 1
+
+            weights_vertex = na.regridding.weights(
+                coordinates_input=position_tile,
+                coordinates_output=_index(position_vertex, index_vertex_cell),
+                axis_input=axis_xy,
+                axis_output=axis_xy,
+                method="conservative",
+            )
+            num_time[index_vertex] = _index(num_time, index_vertex) + _regrid(
+                weights=weights_vertex,
+                values=jd_tile,
+            )
+            den_time[index_vertex] = _index(den_time, index_vertex) + _regrid(
+                weights=weights_vertex,
+                values=coverage_jd,
+            )
+
+        # Dividing by a coverage of zero is how a pixel no tile reached is
+        # found, so the warning it raises is the expected thing rather than
+        # a surprise, and the result is replaced by NaN below.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            outputs_result = num_outputs / den_outputs
+            timedelta_result = num_timedelta / den_timedelta
+            jd_result = num_time / den_time
+
+        outputs_result[den_outputs == 0] = np.nan
+        timedelta_result[den_timedelta == 0] = np.nan
+
+        # Vertices which no tile covers have no time, and are masked.
+        # The value underneath the mask is the mean time of the rest,
+        # since :class:`astropy.time.Time` insists on a finite one.
+        where_time = den_time != 0
+        jd_result[~where_time] = _index(jd_result, where_time).mean()
+        time_result = astropy.time.Time(
+            val=np.ma.array(
+                jd_result.ndarray_aligned(axis_xy),
+                mask=~where_time.ndarray_aligned(axis_xy),
+            ),
+            format="jd",
+        )
+        time_result.format = "isot"
+        inputs_result.time = na.ScalarArray(
+            ndarray=cast(np.ndarray, time_result),
+            axes=axis_xy,
+        )
+
+        return dataclasses.replace(
+            self,
+            inputs=inputs_result,
+            outputs=outputs_result,
+            timedelta=timedelta_result,
         )
 
     def show(
@@ -601,6 +1131,7 @@ class SpectrographObservation(
         vmax: None | na.ArrayLike = None,
         velocity_min: u.Quantity = -100 * u.km / u.s,
         velocity_max: u.Quantity = +100 * u.km / u.s,
+        epoch: None | str | astropy.time.Time = None,
         cbar_fraction: float = 0.1,
     ) -> matplotlib.animation.FuncAnimation:
         """
@@ -621,10 +1152,18 @@ class SpectrographObservation(
             The minimum Doppler velocity of the data range.
         velocity_max
             The maximum Doppler velocity of the data range.
+        epoch
+            The time to carry the observation to, undoing the rotation of
+            the Sun over the frames so that a feature stays where it is
+            instead of drifting west across the animation.
+            If :obj:`None` (the default), the frames are left where they
+            were observed. If ``"auto"``, the middle of the observation is
+            used, which is the time that halves the largest correction.
         cbar_fraction
             The fraction of the space to use for the colorbar axes.
         """
         wavelength_center = self.inputs.wavelength_rest
+        position = self._position(self._epoch(epoch))
 
         axis_time = self.axis_time
         axis_wavelength = self.axis_wavelength
@@ -653,8 +1192,8 @@ class SpectrographObservation(
             ax[1].xaxis.set_label_position("top")
             ax[1].ticklabel_format(useOffset=False)
             ax2 = ax[1].twinx()
-            x = self.inputs.position.x
-            y = self.inputs.position.y
+            x = position.x
+            y = position.y
             ani, colorbar = na.plt.rgbmovie(
                 self.inputs.time.mean(axis_x),
                 self.inputs.velocity,
@@ -706,6 +1245,7 @@ class SpectrographObservation(
         vmax: None | na.ArrayLike = None,
         velocity_min: u.Quantity = -100 * u.km / u.s,
         velocity_max: u.Quantity = +100 * u.km / u.s,
+        epoch: None | str | astropy.time.Time = None,
         cbar_fraction: float = 0.1,
         fps: None | float = None,
     ) -> IPython.display.HTML:
@@ -727,6 +1267,13 @@ class SpectrographObservation(
             The minimum Doppler velocity of the data range.
         velocity_max
             The maximum Doppler velocity of the data range.
+        epoch
+            The time to carry the observation to, undoing the rotation of
+            the Sun over the frames so that a feature stays where it is
+            instead of drifting west across the animation.
+            If :obj:`None` (the default), the frames are left where they
+            were observed. If ``"auto"``, the middle of the observation is
+            used, which is the time that halves the largest correction.
         cbar_fraction
             The fraction of the space to use for the colorbar axes.
         fps
@@ -738,6 +1285,7 @@ class SpectrographObservation(
             vmax=vmax,
             velocity_min=velocity_min,
             velocity_max=velocity_max,
+            epoch=epoch,
             cbar_fraction=cbar_fraction,
         )
 
