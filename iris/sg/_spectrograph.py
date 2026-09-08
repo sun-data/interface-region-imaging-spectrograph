@@ -67,17 +67,6 @@ def _extent(a: na.ScalarArray) -> tuple[u.Quantity, u.Quantity]:
     return u.Quantity(ndarray.min()), u.Quantity(ndarray.max())
 
 
-def _value(a: np.ndarray, unit: u.UnitBase) -> np.ndarray:
-    """
-    Strip a known unit from an array.
-
-    The unit comes from :func:`named_arrays.unit_normalized`, which answers
-    with a dimensionless unit rather than :obj:`None`, so there is no
-    unitless case to handle separately.
-    """
-    return np.asarray(u.Quantity(a).to_value(unit))
-
-
 def _ratio(a: Any, b: Any) -> float:
     """
     The dimensionless ratio of two quantities, whatever their units.
@@ -651,7 +640,6 @@ class SpectrographObservation(
         axis_x = self.axis_detector_x
         axis_y = self.axis_detector_y
         axis_xy = (axis_x, axis_y)
-        axes = (axis_x, axis_y, axis_wavelength)
 
         inputs = self.inputs
 
@@ -801,22 +789,22 @@ class SpectrographObservation(
         )
 
         # The sums of the resampled values and of the resampled coverage,
-        # whose ratio is the coverage-weighted mean.
+        # whose ratio is the coverage-weighted mean. They carry the units of
+        # what goes into them, so nothing has to be taken off and put back.
         # `unit_normalized` is declared to return an array as well as a unit,
         # since a vector has one unit per component, but these are scalars
         # and so have just the one between them.
         unit = cast(u.UnitBase, na.unit_normalized(outputs))
         unit_timedelta = cast(u.UnitBase, na.unit_normalized(timedelta))
 
-        shape = tuple(shape_wcs[a] for a in axes)
-        num_outputs = np.zeros(shape)
-        den_outputs = np.zeros(shape)
+        num_outputs = na.ScalarArray.zeros(shape_wcs) << unit
+        den_outputs = na.ScalarArray.zeros(shape_wcs)
 
-        num_timedelta = np.zeros((num_x, num_y))
-        den_timedelta = np.zeros((num_x, num_y))
+        num_timedelta = na.ScalarArray.zeros(shape_xy) << unit_timedelta
+        den_timedelta = na.ScalarArray.zeros(shape_xy)
 
-        num_time = np.zeros((num_x + 1, num_y + 1))
-        den_time = np.zeros((num_x + 1, num_y + 1))
+        num_time = na.ScalarArray.zeros(vshape_xy)
+        den_time = na.ScalarArray.zeros(vshape_xy)
 
         num_tiles = self.shape.get(axis_time, 1)
 
@@ -825,10 +813,11 @@ class SpectrographObservation(
             # NaN pixels of the tile contribute neither to the sum of the
             # values nor to the coverage, so that they are averaged out
             # rather than spread by the resampling.
-            values = _value(select(outputs, i).ndarray_aligned(axes), unit)
+            values = select(outputs, i).explicit.copy()
             where = np.isfinite(values)
-            values = np.where(where, values, 0)
-            coverage = where.astype(float)
+            values[~where] = 0 * unit
+            coverage = na.ScalarArray.zeros(values.shape)
+            coverage[where] = 1
 
             weights_wavelength = na.regridding.weights(
                 coordinates_input=select(wavelength, i),
@@ -839,11 +828,11 @@ class SpectrographObservation(
             )
             values_tile = _regrid(
                 weights=weights_wavelength,
-                values=na.ScalarArray(values, axes=axes),
+                values=values,
             )
             coverage_tile = _regrid(
                 weights=weights_wavelength,
-                values=na.ScalarArray(coverage, axes=axes),
+                values=coverage,
             )
 
             # Only the part of the mosaic which the tile can touch is
@@ -860,8 +849,10 @@ class SpectrographObservation(
             ix1 = min(ix1 + 1, num_x)
             iy1 = min(iy1 + 1, num_y)
 
-            slice_cell = (slice(ix0, ix1), slice(iy0, iy1))
-            slice_vertex = (slice(ix0, ix1 + 1), slice(iy0, iy1 + 1))
+            index_cell = {
+                axis_x: slice(ix0, ix1),
+                axis_y: slice(iy0, iy1),
+            }
             index_vertex = {
                 axis_x: slice(ix0, ix1 + 1),
                 axis_y: slice(iy0, iy1 + 1),
@@ -878,41 +869,43 @@ class SpectrographObservation(
                 axis_output=axis_xy,
                 method="conservative",
             )
-            num_outputs[slice_cell] += _regrid(
+            num_outputs[index_cell] = _index(num_outputs, index_cell) + _regrid(
                 weights=weights_xy,
                 values=values_tile,
-            ).ndarray_aligned(axes)
-            den_outputs[slice_cell] += _regrid(
+            )
+            den_outputs[index_cell] = _index(den_outputs, index_cell) + _regrid(
                 weights=weights_xy,
                 values=coverage_tile,
-            ).ndarray_aligned(axes)
+            )
 
-            shape_tile = tuple(position_tile.shape[a] - 1 for a in axis_xy)
-            ones_tile = na.ScalarArray.ones(dict(zip(axis_xy, shape_tile)))
+            shape_tile = {a: position_tile.shape[a] - 1 for a in axis_xy}
+            ones_tile = na.ScalarArray.ones(shape_tile)
             coverage_xy = _regrid(
                 weights=weights_xy,
                 values=ones_tile,
-            ).ndarray_aligned(axis_xy)
+            )
 
-            timedelta_tile = select(timedelta, i).ndarray_aligned(axis_xy)
-            timedelta_tile = _value(timedelta_tile, unit_timedelta)
-            timedelta_tile = np.broadcast_to(timedelta_tile, shape_tile)
-            num_timedelta[slice_cell] += _regrid(
+            timedelta_tile = na.broadcast_to(select(timedelta, i), shape_tile)
+            num_timedelta[index_cell] = _index(num_timedelta, index_cell) + _regrid(
                 weights=weights_xy,
-                values=na.ScalarArray(timedelta_tile, axes=axis_xy),
-            ).ndarray_aligned(axis_xy)
-            den_timedelta[slice_cell] += coverage_xy
+                values=timedelta_tile,
+            )
+            den_timedelta[index_cell] = _index(den_timedelta, index_cell) + coverage_xy
 
             # The time of a pixel of the tile is the mean of the times of
             # the vertices around it, along whichever axes it varies.
-            jd_tile = select(jd, i).ndarray_aligned(axis_xy)
-            if jd_tile.shape[0] > 1:
-                jd_tile = (jd_tile[:-1] + jd_tile[1:]) / 2
-            if jd_tile.shape[1] > 1:
-                jd_tile = (jd_tile[:, :-1] + jd_tile[:, 1:]) / 2
-            jd_tile = np.broadcast_to(jd_tile, shape_tile)
+            jd_tile = select(jd, i)
+            for axis in axis_xy:
+                if axis in jd_tile.shape:
+                    lower = _index(jd_tile, {axis: slice(None, ~0)})
+                    upper = _index(jd_tile, {axis: slice(+1, None)})
+                    jd_tile = (lower + upper) / 2
+            jd_tile = na.broadcast_to(jd_tile, shape_tile).copy()
+
             where_jd = np.isfinite(jd_tile)
-            jd_tile = np.where(where_jd, jd_tile, 0)
+            jd_tile[~where_jd] = 0
+            coverage_jd = na.ScalarArray.zeros(shape_tile)
+            coverage_jd[where_jd] = 1
 
             weights_vertex = na.regridding.weights(
                 coordinates_input=position_tile,
@@ -921,15 +914,18 @@ class SpectrographObservation(
                 axis_output=axis_xy,
                 method="conservative",
             )
-            num_time[slice_vertex] += _regrid(
+            num_time[index_vertex] = _index(num_time, index_vertex) + _regrid(
                 weights=weights_vertex,
-                values=na.ScalarArray(jd_tile, axes=axis_xy),
-            ).ndarray_aligned(axis_xy)
-            den_time[slice_vertex] += _regrid(
+                values=jd_tile,
+            )
+            den_time[index_vertex] = _index(den_time, index_vertex) + _regrid(
                 weights=weights_vertex,
-                values=na.ScalarArray(where_jd.astype(float), axes=axis_xy),
-            ).ndarray_aligned(axis_xy)
+                values=coverage_jd,
+            )
 
+        # Dividing by a coverage of zero is how a pixel no tile reached is
+        # found, so the warning it raises is the expected thing rather than
+        # a surprise, and the result is replaced by NaN below.
         with np.errstate(divide="ignore", invalid="ignore"):
             outputs_result = num_outputs / den_outputs
             timedelta_result = num_timedelta / den_timedelta
@@ -938,17 +934,16 @@ class SpectrographObservation(
         outputs_result[den_outputs == 0] = np.nan
         timedelta_result[den_timedelta == 0] = np.nan
 
-        outputs_result = u.Quantity(outputs_result, unit)
-        timedelta_result = u.Quantity(timedelta_result, unit_timedelta)
-
         # Vertices which no tile covers have no time, and are masked.
         # The value underneath the mask is the mean time of the rest,
         # since :class:`astropy.time.Time` insists on a finite one.
         where_time = den_time != 0
-        jd_fill = jd_result[where_time].mean() if where_time.any() else 0.0
-        jd_result = np.where(where_time, jd_result, jd_fill)
+        jd_result[~where_time] = _index(jd_result, where_time).mean()
         time_result = astropy.time.Time(
-            val=np.ma.array(jd_result, mask=~where_time),
+            val=np.ma.array(
+                jd_result.ndarray_aligned(axis_xy),
+                mask=~where_time.ndarray_aligned(axis_xy),
+            ),
             format="jd",
         )
         time_result.format = "isot"
@@ -960,8 +955,8 @@ class SpectrographObservation(
         return dataclasses.replace(
             self,
             inputs=inputs_result,
-            outputs=na.ScalarArray(outputs_result, axes=axes),
-            timedelta=na.ScalarArray(timedelta_result, axes=axis_xy),
+            outputs=outputs_result,
+            timedelta=timedelta_result,
         )
 
     def show(
