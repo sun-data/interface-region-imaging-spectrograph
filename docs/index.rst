@@ -1,7 +1,7 @@
 Introduction
 ============
 
-The `Interface Region Imaging Spectograph <https://iris.lmsal.com>`_ (IRIS) is a NASA
+The `Interface Region Imaging Spectrograph <https://iris.lmsal.com>`_ (IRIS) is a NASA
 Small Explorer satellite which has been taking continuous ultraviolet images of
 the Sun since 2013 :cite:p:`DePontieu2014`.
 
@@ -43,6 +43,28 @@ and display as a false-color movie.
 
     # Display the raster sequence as a false-color animation
     obs.to_jshtml()
+
+
+Citation
+========
+
+If you use :mod:`iris` in your research, please cite it.
+The citation metadata is kept in
+`CITATION.cff <https://github.com/sun-data/interface-region-imaging-spectrograph/blob/main/CITATION.cff>`_,
+which the "Cite this repository" button on the
+`GitHub page <https://github.com/sun-data/interface-region-imaging-spectrograph>`_
+can export as BibTeX or APA.
+Please include the version of :mod:`iris` that you used,
+which is given by ``importlib.metadata.version("interface-region-imaging-spectrograph")``.
+
+.. code-block:: bibtex
+
+    @software{interface-region-imaging-spectrograph,
+      author = {Smart, Roy T.},
+      title = {interface-region-imaging-spectrograph},
+      version = {X.Y.Z},
+      url = {https://github.com/sun-data/interface-region-imaging-spectrograph},
+    }
 
 
 References
