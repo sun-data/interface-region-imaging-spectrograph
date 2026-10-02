@@ -7,7 +7,7 @@
 [![Documentation Status](https://readthedocs.org/projects/interface-region-imaging-spectrograph/badge/?version=latest)](https://interface-region-imaging-spectrograph.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/interface-region-imaging-spectrograph.svg)](https://badge.fury.io/py/interface-region-imaging-spectrograph)
 
-A Python library for downloading and analyzing images from the [Interface Region Imaging Spectrograph (IRIS)](iris.lmsal.com), 
+A Python library for downloading and analyzing images from the [Interface Region Imaging Spectrograph (IRIS)](https://iris.lmsal.com), 
 a NASA small explorer satellite which observes the Sun in ultraviolet.
 
 ## Installation
@@ -23,3 +23,20 @@ Download spectrograph rasters from a specified time range and plot the Si IV 140
 spectral line as a false-color image.
 
 [![obs](https://interface-region-imaging-spectrograph.readthedocs.io/en/latest/_images/iris.sg.SpectrographObservation_0_1.png)](https://interface-region-imaging-spectrograph.readthedocs.io/en/latest/_autosummary/iris.sg.SpectrographObservation.html#iris.sg.SpectrographObservation)
+
+## Citation
+
+If you use interface-region-imaging-spectrograph in your research, please cite it.
+The citation metadata is kept in [`CITATION.cff`](https://github.com/sun-data/interface-region-imaging-spectrograph/blob/main/CITATION.cff),
+which the "Cite this repository" button on GitHub can export as BibTeX or APA.
+Please include the version of interface-region-imaging-spectrograph that you used,
+which is given by `importlib.metadata.version("interface-region-imaging-spectrograph")`.
+
+```bibtex
+@software{interface-region-imaging-spectrograph,
+  author = {Smart, Roy T.},
+  title = {interface-region-imaging-spectrograph},
+  version = {X.Y.Z},
+  url = {https://github.com/sun-data/interface-region-imaging-spectrograph},
+}
+```

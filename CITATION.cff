@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use interface-region-imaging-spectrograph in your research, please cite it using these metadata."
+type: software
+title: interface-region-imaging-spectrograph
+abstract: >-
+  interface-region-imaging-spectrograph, imported as iris, is a Python library
+  for downloading and analyzing observations from the Interface Region Imaging
+  Spectrograph (IRIS), a NASA Small Explorer satellite which has observed the
+  Sun in the ultraviolet since 2013. It finds spectrograph observations
+  through the Heliophysics Event Knowledge Base (HEK), downloads and caches
+  them, and loads a sequence of rasters into a single named-arrays function
+  array, which carries the time, wavelength, Doppler velocity, and sky
+  position of every pixel along with physical units. The library also
+  converts data numbers to photons using the effective area of the
+  spectrograph, estimates and subtracts the stray light background of the
+  far-ultraviolet spectrograph images, and helps plan observations by
+  counting how many times a raster can repeat within a given window.
+authors:
+  - family-names: Smart
+    given-names: Roy T.
+    orcid: "https://orcid.org/0000-0002-9997-5515"
+repository-code: "https://github.com/sun-data/interface-region-imaging-spectrograph"
+url: "https://interface-region-imaging-spectrograph.readthedocs.io"
+license: BSD-3-Clause
+keywords:
+  - Interface Region Imaging Spectrograph
+  - IRIS
+  - ultraviolet spectroscopy
+  - solar physics
+  - data access
