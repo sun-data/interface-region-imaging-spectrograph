@@ -54,8 +54,17 @@ The citation metadata is kept in
 which the "Cite this repository" button on the
 `GitHub page <https://github.com/sun-data/interface-region-imaging-spectrograph>`_
 can export as BibTeX or APA.
+
+Every release of :mod:`iris` is archived on Zenodo with its own DOI.
+The concept DOI,
+`10.5281/zenodo.23104892 <https://doi.org/10.5281/zenodo.23104892>`_,
+always resolves to the latest version,
+and the Zenodo page lists the DOI of every version.
 Please include the version of :mod:`iris` that you used,
 which is given by ``importlib.metadata.version("interface-region-imaging-spectrograph")``.
+The BibTeX entry below uses the concept DOI.
+To cite a specific version instead,
+replace ``doi`` with the DOI of that version.
 
 .. code-block:: bibtex
 
@@ -63,6 +72,7 @@ which is given by ``importlib.metadata.version("interface-region-imaging-spectro
       author = {Smart, Roy T.},
       title = {interface-region-imaging-spectrograph},
       version = {X.Y.Z},
+      doi = {10.5281/zenodo.23104892},
       url = {https://github.com/sun-data/interface-region-imaging-spectrograph},
     }
 

@@ -6,6 +6,7 @@
 [![Ruff](https://github.com/sun-data/interface-region-imaging-spectrograph/actions/workflows/ruff.yml/badge.svg)](https://github.com/sun-data/interface-region-imaging-spectrograph/actions/workflows/ruff.yml)
 [![Documentation Status](https://readthedocs.org/projects/interface-region-imaging-spectrograph/badge/?version=latest)](https://interface-region-imaging-spectrograph.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/interface-region-imaging-spectrograph.svg)](https://badge.fury.io/py/interface-region-imaging-spectrograph)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23104892.svg)](https://doi.org/10.5281/zenodo.23104892)
 
 A Python library for downloading and analyzing images from the [Interface Region Imaging Spectrograph (IRIS)](https://iris.lmsal.com), 
 a NASA small explorer satellite which observes the Sun in ultraviolet.
@@ -29,14 +30,23 @@ spectral line as a false-color image.
 If you use interface-region-imaging-spectrograph in your research, please cite it.
 The citation metadata is kept in [`CITATION.cff`](https://github.com/sun-data/interface-region-imaging-spectrograph/blob/main/CITATION.cff),
 which the "Cite this repository" button on GitHub can export as BibTeX or APA.
+
+Every release of interface-region-imaging-spectrograph is archived on Zenodo with its own DOI.
+The concept DOI, [10.5281/zenodo.23104892](https://doi.org/10.5281/zenodo.23104892),
+always resolves to the latest version,
+and the Zenodo page lists the DOI of every version.
 Please include the version of interface-region-imaging-spectrograph that you used,
 which is given by `importlib.metadata.version("interface-region-imaging-spectrograph")`.
+The BibTeX entry below uses the concept DOI.
+To cite a specific version instead,
+replace `doi` with the DOI of that version.
 
 ```bibtex
 @software{interface-region-imaging-spectrograph,
   author = {Smart, Roy T.},
   title = {interface-region-imaging-spectrograph},
   version = {X.Y.Z},
+  doi = {10.5281/zenodo.23104892},
   url = {https://github.com/sun-data/interface-region-imaging-spectrograph},
 }
 ```
