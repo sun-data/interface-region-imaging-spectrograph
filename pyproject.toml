@@ -24,7 +24,7 @@ dependencies = [
     "sunpy",
     "irispy-lmsal>=0.8.1",
     "named-arrays~=2.14",
-    "regridding>=3.5.1",
+    "regridding @ git+https://github.com/sun-data/regridding.git@bugfix/fill-boundaries",
 ]
 dynamic = ["version"]
 
