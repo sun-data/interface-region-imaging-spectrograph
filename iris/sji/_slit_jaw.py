@@ -63,7 +63,6 @@ class SlitJawObservation(
                 C=image.outputs,
                 ax=ax,
                 cmap="gray",
-                norm="asinh",
                 vmin=0 * u.DN,
                 vmax=50 * u.DN,
             )
