@@ -16,6 +16,7 @@ def open(
     axis_time: str = "time",
     axis_detector_x: str = "detector_x",
     axis_detector_y: str = "detector_y",
+    dust: bool = True,
     limit: int = 200,
     nrt: bool = True,
     num_retry: int = 5,
@@ -52,6 +53,11 @@ def open(
         The logical axis corresponding to changes in detector :math:`x`-coordinate.
     axis_detector_y
         The logical axis corresponding to changes in detector :math:`y`-coordinate.
+    dust
+        Whether to find the pixels darkened by dust,
+        :attr:`~iris.sji.SlitJawObservation.dust`,
+        which downloads the maps of bad pixels from the SolarSoft database
+        the first time.
     limit
         The maximum number of observations returned by the query.
     nrt
@@ -91,6 +97,7 @@ def open(
         axis_time=axis_time,
         axis_detector_x=axis_detector_x,
         axis_detector_y=axis_detector_y,
+        dust=dust,
         limit=limit,
         nrt=nrt,
         num_retry=num_retry,
