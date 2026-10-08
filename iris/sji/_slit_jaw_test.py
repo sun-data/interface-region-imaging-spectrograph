@@ -155,6 +155,52 @@ class TestSlitJawObservation:
         assert isinstance(result, iris.sji.SlitJawObservation)
         assert result.timedelta.shape == {}
         assert result.timedelta == array.timedelta[index]
+        assert result.dust is not None
+        assert result.dust.shape == result.outputs.shape
+
+    def test_dust(self, array: iris.sji.SlitJawObservation):
+        dust = array.dust
+        outputs = array.outputs
+        assert isinstance(dust, na.ScalarArray)
+        assert dust.ndarray.dtype == bool
+        assert dust.shape == outputs.shape
+
+        # The level 1 pipeline sets the pixels covered by dust to zero
+        zero = outputs == 0 * u.DN
+        assert np.sum(zero & dust) >= 0.99 * np.sum(zero)
+
+        # The dust darkens the pixels around it as well
+        assert np.nanmean(outputs[dust]) < np.nanmean(outputs[~dust])
+
+        # The pixels outside the field of view are not dusty
+        assert not np.any(dust & np.isnan(outputs))
+
+    def test_remove_dust(self, array: iris.sji.SlitJawObservation):
+        result = array.remove_dust()
+        assert isinstance(result, iris.sji.SlitJawObservation)
+        assert result.dust is array.dust
+
+        dust = array.dust
+        outputs = array.outputs
+        outputs_result = result.outputs
+        assert outputs_result.unit == outputs.unit
+
+        # Only the dusty pixels change
+        same = (outputs_result == outputs) | (
+            np.isnan(outputs_result) & np.isnan(outputs)
+        )
+        assert np.all(same | dust)
+
+        # Every dusty pixel is filled
+        assert np.all(np.isfinite(outputs_result[dust]))
+        assert np.nanmean(outputs_result[dust]) > np.nanmean(outputs[dust])
+
+    def test_remove_dust_frame(self, array: iris.sji.SlitJawObservation):
+        """A single frame is filled from its own pixels."""
+        frame = array[{array.axis_time: 0}]
+        result = frame.remove_dust()
+        assert frame.dust is not None
+        assert np.all(np.isfinite(result.outputs[frame.dust]))
 
 
 def test_inputs_against_astropy_wcs():
@@ -256,6 +302,10 @@ def test_from_fits_concatenate(tmp_path: pathlib.Path):
     assert np.all(np.isnan(result.outputs[pad_a]))
     assert np.all(np.isnan(result.outputs[pad_b]))
 
+    assert result.dust is not None
+    assert not np.any(result.dust[pad_a])
+    assert not np.any(result.dust[pad_b])
+
     image_a = iris.sji.SlitJawObservation.from_fits(a).outputs
     image_b = iris.sji.SlitJawObservation.from_fits(b).outputs
     for image, index in [
@@ -327,6 +377,67 @@ def test_timedelta_default():
     b = iris.sji.SlitJawObservation(inputs=na.ScalarArray(0), outputs=na.ScalarArray(0))
     assert a.timedelta == 0 * u.s
     assert a.timedelta is not b.timedelta
+
+
+def test_from_fits_no_dust():
+    result = iris.sji.SlitJawObservation.from_fits(_path(), dust=False)
+    assert result.dust is None
+
+    with pytest.raises(ValueError, match="not loaded"):
+        result.remove_dust()
+
+
+def test_remove_dust_neighbors():
+    """
+    A dusty pixel is replaced by the median of the same pixel in the
+    neighboring frames which are not dusty, scaled by exposure time,
+    and a pixel which is dusty in every frame is filled from its neighbors
+    in the same frame.
+    """
+
+    rng = np.random.default_rng(seed=0)
+
+    axes = ("time", "detector_y", "detector_x")
+    shape = (5, 6, 7)
+
+    outputs = rng.uniform(1, 10, size=shape)
+    timedelta = np.array([1.0, 2.0, 4.0, 1.0, 2.0])
+
+    dust = np.zeros(shape, dtype=bool)
+    dust[2, 1, 3] = True
+    dust[1, 1, 3] = True
+    dust[:, 4, 4] = True
+
+    array = iris.sji.SlitJawObservation(
+        inputs=na.ScalarArray(0),
+        outputs=na.ScalarArray(outputs << u.DN, axes),
+        timedelta=na.ScalarArray(timedelta << u.s, "time"),
+        dust=na.ScalarArray(dust, axes),
+    )
+
+    result = array.remove_dust(num_iterations=1)
+    actual = result.outputs.ndarray_aligned(axes).to_value(u.DN)
+
+    # The neighbors of frame 2 are frames 0, 1, 3 and 4,
+    # and the pixel is dusty in frame 1.
+    rate = outputs[:, 1, 3] / timedelta
+    expected = np.median(rate[[0, 3, 4]]) * timedelta[2]
+    assert np.isclose(actual[2, 1, 3], expected)
+
+    # The neighbors of frame 1 are frames 0, 2 and 3,
+    # and the pixel is dusty in frame 2.
+    rate = outputs[:, 1, 3] / timedelta
+    expected = np.median(rate[[0, 3]]) * timedelta[1]
+    assert np.isclose(actual[1, 1, 3], expected)
+
+    # The pixel which is dusty in every frame is the mean of its neighbors
+    expected = (
+        outputs[:, 3, 4] + outputs[:, 5, 4] + outputs[:, 4, 3] + outputs[:, 4, 5]
+    ) / 4
+    assert np.allclose(actual[:, 4, 4], expected)
+
+    # The other pixels are left alone
+    assert np.all(actual[~dust] == outputs[~dust])
 
 
 def test_from_time_range_no_window():

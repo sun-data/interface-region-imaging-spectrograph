@@ -41,3 +41,9 @@ def test_open_time_stop(
     assert result.shape[result.axis_time] > 0
     assert np.all(t >= astropy.time.Time(time))
     assert np.all(t < astropy.time.Time(time_stop))
+
+
+@pytest.mark.parametrize("time_stop", [None, "2021-09-23T06:22"])
+def test_open_no_dust(time_stop: None | str):
+    result = iris.sji.open("2021-09-23T06:20", time_stop, dust=False)
+    assert result.dust is None

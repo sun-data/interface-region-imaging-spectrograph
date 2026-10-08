@@ -20,8 +20,11 @@ dependencies = [
     "astropy",
     "requests",
     "joblib",
+    "scipy",
+    "sunpy",
     "irispy-lmsal>=0.8.1",
     "named-arrays~=2.14",
+    "regridding>=3.5.1",
 ]
 dynamic = ["version"]
 

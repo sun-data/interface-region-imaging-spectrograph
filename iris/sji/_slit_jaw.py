@@ -1,13 +1,17 @@
 from typing import Sequence
+import typing
 import os
 import pathlib
+import warnings
 import dataclasses
 import numpy as np
 import astropy.units as u
 import astropy.time
 import astropy.io.fits
+import regridding
 import named_arrays as na
 import iris
+from . import _dust
 
 __all__ = [
     "SlitJawObservation",
@@ -95,6 +99,27 @@ class SlitJawObservation(
     The exposure time of each frame.
     """
 
+    dust: None | na.ScalarArray = None
+    """
+    Whether each pixel is darkened by dust on the CCD of the slit-jaw imager,
+    or :obj:`None` if the dust was not loaded.
+
+    The dust is found from the map of bad pixels which the IRIS team measures
+    from the flat field of each channel and publishes in the SolarSoft
+    database, using the flat field nearest in time to the observation.
+    Each bad pixel is grown by a few pixels, to cover the partly dark rim of
+    each dust particle, and moved into each frame the way ``IRIS_DUSTBUSTER``
+    in SolarSoft moves it:
+    rotated and scaled about the center of the slit on the CCD,
+    placed relative to the center of the slit in that frame,
+    and moved by the shift of up to 7 pixels which makes the dusty pixels
+    of the observation darkest.
+
+    The dust stays put on the CCD while each level 2 frame is shifted so that
+    the Sun stays put,
+    so the dust moves from frame to frame along with the slit.
+    """
+
     axis_time: str = "time"
     """The logical axis corresponding to changes in time."""
 
@@ -115,6 +140,7 @@ class SlitJawObservation(
         axis_time: str = "time",
         axis_detector_x: str = "detector_x",
         axis_detector_y: str = "detector_y",
+        dust: bool = True,
         limit: int = 200,
         nrt: bool = False,
         num_retry: int = 5,
@@ -145,6 +171,10 @@ class SlitJawObservation(
             The logical axis corresponding to changes in detector :math:`x`-coordinate.
         axis_detector_y
             The logical axis corresponding to changes in detector :math:`y`-coordinate.
+        dust
+            Whether to find the pixels darkened by dust, :attr:`dust`,
+            which downloads the maps of bad pixels from the SolarSoft
+            database the first time.
         limit
             The maximum number of observations returned by the query.
         nrt
@@ -176,6 +206,8 @@ class SlitJawObservation(
             axis_time=axis_time,
             axis_detector_x=axis_detector_x,
             axis_detector_y=axis_detector_y,
+            dust=dust,
+            num_retry=num_retry,
         )
 
     @classmethod
@@ -187,6 +219,8 @@ class SlitJawObservation(
         axis_time: str = "time",
         axis_detector_x: str = "detector_x",
         axis_detector_y: str = "detector_y",
+        dust: bool = True,
+        num_retry: int = 5,
     ) -> "SlitJawObservation":
         """
         Load the frames of one or more level 2 slit-jaw files which began
@@ -217,11 +251,22 @@ class SlitJawObservation(
             The logical axis corresponding to changes in detector :math:`x`-coordinate.
         axis_detector_y
             The logical axis corresponding to changes in detector :math:`y`-coordinate.
+        dust
+            Whether to find the pixels darkened by dust, :attr:`dust`,
+            which downloads the maps of bad pixels from the SolarSoft
+            database the first time.
+        num_retry
+            The number of times to try to connect to the SolarSoft database.
 
         Notes
         -----
         The level 2 pipeline marks missing pixels, and the pixels outside
         the field of view, with the same value, and both are set to NaN.
+
+        The level 1 pipeline sets the pixels which are known to be bad,
+        including the ones covered by dust, to zero,
+        and they are left as they are.
+        :meth:`remove_dust` replaces the pixels darkened by dust.
 
         The level 2 pipeline records the pointing of an exposure as zero
         when it is unknown.
@@ -297,15 +342,17 @@ class SlitJawObservation(
                 frames["TIME"].append(time[index])
                 frames["EXPTIMES"].append(aux[index, header_aux["EXPTIMES"]])
 
+                pointing = dict()
                 for key in _columns_pointing:
                     try:
-                        pointing = _interpolate_zeros(aux[:, header_aux[key]])
+                        column = _interpolate_zeros(aux[:, header_aux[key]])
                     except ValueError as e:
                         raise ValueError(
                             f"The pointing column {key} of {file} is zero, "
                             f"which means unknown, in every frame."
                         ) from e
-                    frames[key].append(pointing[index])
+                    pointing[key] = column[index]
+                    frames[key].append(pointing[key])
 
                 for key in ["CRPIX1", "CRPIX2", "CDELT1", "CDELT2"]:
                     frames[key].append(np.full(num, header[key]))
@@ -313,7 +360,33 @@ class SlitJawObservation(
                 shape_y = max(shape_y, int(header["NAXIS2"]))
                 shape_x = max(shape_x, int(header["NAXIS1"]))
 
-                selected.append((file, index))
+                geometry = None
+                if dust:
+                    # One less than the auxiliary data,
+                    # which counts pixels from one.
+                    slit = [
+                        _interpolate_zeros(aux[:, header_aux[key]])[index] - 1
+                        for key in ["SLTPX1IX", "SLTPX2IX"]
+                    ]
+                    pc = [
+                        pointing[key]
+                        for key in ["PC1_1IX", "PC1_2IX", "PC2_1IX", "PC2_2IX"]
+                    ]
+                    geometry = dict(
+                        window=header["TDESC1"],
+                        time=astropy.time.Time(header["DATE_OBS"]),
+                        binning=(header["SUMSPTRL"], header["SUMSPAT"]),
+                        slit=np.stack(slit, axis=~0),
+                        crval=np.stack(
+                            [pointing["XCENIX"], pointing["YCENIX"]],
+                            axis=~0,
+                        ),
+                        crpix=np.array([header["CRPIX1"], header["CRPIX2"]]) - 1,
+                        cdelt=np.array([header["CDELT1"], header["CDELT2"]]),
+                        pc=np.stack(pc, axis=~0).reshape(num, 2, 2),
+                    )
+
+                selected.append((file, index, geometry))
 
         if not selected:
             raise ValueError(
@@ -322,17 +395,29 @@ class SlitJawObservation(
 
         # Read the frames into one array, padded with NaN,
         # so that the images are held in memory only once.
-        num_t = sum(index.stop - index.start for file, index in selected)
+        num_t = sum(index.stop - index.start for file, index, geometry in selected)
         image = np.full((num_t, shape_y, shape_x), np.nan, dtype=np.float32)
+        mask = np.zeros(image.shape, dtype=bool)
         t = 0
-        for file, index in selected:
+        for file, index, geometry in selected:
             with astropy.io.fits.open(file) as hdul:
                 data = hdul[0].section[index]
+            data[data == -200] = np.nan
             num, num_y, num_x = data.shape
             image[t : t + num, :num_y, :num_x] = data
+            if geometry is not None:
+                mask[t : t + num, :num_y, :num_x] = _dust._mask(
+                    image=data,
+                    num_retry=num_retry,
+                    **geometry,
+                )
             t += num
 
-        image[image == -200] = np.nan
+        axes = (axis_time, axis_detector_y, axis_detector_x)
+
+        dusty = None
+        if dust:
+            dusty = na.ScalarArray(mask, axes=axes)
 
         def scalar(key: str, unit: None | u.UnitBase = None) -> na.ScalarArray:
             a = np.concatenate(frames[key])
@@ -390,17 +475,178 @@ class SlitJawObservation(
 
         outputs = na.ScalarArray(
             ndarray=image << u.DN,
-            axes=(axis_time, axis_detector_y, axis_detector_x),
+            axes=axes,
         )
 
         return cls(
             inputs=inputs,
             outputs=outputs,
             timedelta=scalar("EXPTIMES", u.s),
+            dust=dusty,
             axis_time=axis_time,
             axis_detector_x=axis_detector_x,
             axis_detector_y=axis_detector_y,
         )
+
+    def remove_dust(
+        self,
+        num_iterations: int = 100,
+    ) -> "SlitJawObservation":
+        """
+        Replace the pixels darkened by dust, :attr:`dust`,
+        with an estimate of the Sun behind the dust.
+
+        As ``IRIS_DUSTBUSTER`` in SolarSoft does,
+        each dusty pixel is first replaced by the median of the same pixel in
+        the two frames before it and the two frames after it in which that
+        pixel is not dusty, each scaled by the ratio of the exposure times.
+        The dust moves with the slit while the Sun stays put,
+        so when IRIS is rastering, the neighboring frames often see the Sun
+        behind the dust.
+
+        The dusty pixels which none of those frames see,
+        such as the middle of a large dust particle,
+        or every dusty pixel of a sit-and-stare observation,
+        are then filled by :func:`regridding.fill`,
+        which relaxes each one toward the mean of its neighbors in the same
+        frame.
+
+        The result is a cosmetic estimate rather than a measurement,
+        and :attr:`dust` still marks the pixels which were replaced.
+
+        Parameters
+        ----------
+        num_iterations
+            The number of Gauss-Seidel iterations used by :func:`regridding.fill`.
+
+        Examples
+        --------
+
+        Remove the dust from the Si IV slit-jaw images captured while ESIS was
+        observing the Sun, and compare a dusty region of one frame before and
+        after.
+
+        .. jupyter-execute::
+
+            import matplotlib.pyplot as plt
+            import astropy.units as u
+            import astropy.visualization
+            import named_arrays as na
+            import iris
+
+            # Load the slit-jaw images captured during the ESIS flight
+            obs = iris.sji.open(
+                time="2019-09-30T18:06:11",
+                time_stop="2019-09-30T18:11:01",
+            )
+
+            # Replace the pixels darkened by dust
+            clean = obs.remove_dust()
+
+            # A dusty region of one frame
+            index = {
+                obs.axis_time: 10,
+                obs.axis_detector_x: slice(90, 170),
+                obs.axis_detector_y: slice(35, 115),
+            }
+
+            # Display the region before and after
+            unit = obs.inputs.position.x.unit
+            with astropy.visualization.quantity_support():
+                fig, axs = plt.subplots(
+                    ncols=2,
+                    figsize=(8, 4.5),
+                    sharex=True,
+                    sharey=True,
+                    constrained_layout=True,
+                )
+                for ax, o, title in zip(axs, [obs, clean], ["level 2", "dust removed"]):
+                    region = o[index]
+                    na.plt.pcolormesh(
+                        region.inputs.position.x,
+                        region.inputs.position.y,
+                        C=region.outputs,
+                        ax=ax,
+                        cmap="gray",
+                        vmin=0 * u.DN,
+                        vmax=50 * u.DN,
+                    )
+                    ax.set_aspect("equal")
+                    ax.set_title(title)
+                    ax.set_xlabel(f"helioprojective $x$ ({unit:latex_inline})")
+                axs[0].set_ylabel(f"helioprojective $y$ ({unit:latex_inline})")
+        """
+        dust = self.dust
+
+        if dust is None:
+            raise ValueError(
+                "The dust was not loaded, so it cannot be removed. "
+                "Load the images with `dust=True`."
+            )
+
+        axis_t = self.axis_time
+        axis_x = self.axis_detector_x
+        axis_y = self.axis_detector_y
+
+        timedelta = na.as_named_array(self.timedelta)
+
+        shape = na.shape_broadcasted(self.outputs, dust, timedelta)
+        axes = tuple(shape)
+
+        # The images, the dust, and the exposure times as arrays of numbers,
+        # broadcast against each other with the axes in the order of `axes`
+        unit = na.unit(self.outputs)
+        images = np.array(na.broadcast_to(self.outputs, shape).value.ndarray, float)
+        dust = np.array(na.broadcast_to(dust, shape).ndarray, bool)
+        timedelta = typing.cast(na.ScalarArray, na.broadcast_to(timedelta, shape))
+        timedelta = np.array(timedelta.value.ndarray, float)
+        remaining = dust.copy()
+
+        if axis_t in shape:
+            ax_t = axes.index(axis_t)
+            num_t = shape[axis_t]
+
+            # The index of every dusty pixel,
+            # and of the same pixel in the two frames before it and the two
+            # frames after it
+            index = np.nonzero(dust)
+            frame = index[ax_t][:, np.newaxis] + np.array([-2, -1, 1, 2])
+            inside = (frame >= 0) & (frame < num_t)
+            index_neighbor = tuple(
+                frame % num_t if ax == ax_t else i[:, np.newaxis]
+                for ax, i in enumerate(index)
+            )
+
+            # The rate of each neighbor which is not dusty itself
+            neighbors = images[index_neighbor] / timedelta[index_neighbor]
+            valid = inside & ~dust[index_neighbor] & np.isfinite(neighbors)
+            neighbors[~valid] = np.nan
+
+            with warnings.catch_warnings():
+                # The pixels which no neighboring frame sees are expected,
+                # and are filled below.
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                estimate = np.nanmedian(neighbors, axis=~0) * timedelta[index]
+
+            seen = np.isfinite(estimate)
+            index_seen = tuple(i[seen] for i in index)
+
+            images[index_seen] = estimate[seen]
+            remaining[index_seen] = False
+
+        if np.any(remaining):
+            images = regridding.fill(
+                a=images,
+                where=remaining,
+                axis=(axes.index(axis_y), axes.index(axis_x)),
+                num_iterations=num_iterations,
+            )
+
+        outputs = na.ScalarArray(images, axes=axes)
+        if unit is not None:
+            outputs = outputs << unit
+
+        return self.replace(outputs=outputs)
 
 
 def _download(
