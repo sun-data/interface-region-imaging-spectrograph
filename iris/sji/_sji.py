@@ -84,6 +84,8 @@ def open(
             axis_time=axis_time,
             axis_detector_x=axis_detector_x,
             axis_detector_y=axis_detector_y,
+            dust=dust,
+            num_retry=num_retry,
         )
 
     time_stop = astropy.time.Time(time_stop)
