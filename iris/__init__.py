@@ -6,6 +6,7 @@ from ._caching import path_cache, memory
 from . import planning
 from . import data
 from . import sg
+from . import sji
 
 __all__ = [
     "path_cache",
@@ -13,4 +14,5 @@ __all__ = [
     "planning",
     "data",
     "sg",
+    "sji",
 ]

@@ -7,6 +7,7 @@ from typing import Sequence
 import pathlib
 import shutil
 import requests
+import astropy.units as u
 import astropy.time
 import iris
 
@@ -16,6 +17,24 @@ __all__ = [
     "download",
     "decompress",
 ]
+
+
+def _ceil_minute(time: astropy.time.Time) -> astropy.time.Time:
+    """
+    Round a time up to the next whole minute.
+
+    HEK takes times to the minute, and cutting the stop time of a search to
+    the minute would leave out the observations which begin after the cut.
+
+    Parameters
+    ----------
+    time
+        The time to round.
+    """
+    result = astropy.time.Time(time.strftime("%Y-%m-%dT%H:%M"), scale=time.scale)
+    if result < time:
+        result = result + 1 * u.min
+    return result
 
 
 def query_hek(
@@ -37,6 +56,9 @@ def query_hek(
         2013-07-20 will be used.
     time_stop
         The end time of the search period. If :obj:`None`, the current time will be used.
+        HEK takes times to the minute,
+        so this is rounded up to the next whole minute,
+        which keeps the observations that begin during its last partial minute.
     description
         The description of the observation. If an empty string, observations with
         any description will be returned.
@@ -74,6 +96,8 @@ def query_hek(
     if time_stop is None:
         time_stop = astropy.time.Time.now()
 
+    stop = _ceil_minute(time_stop)
+
     if nrt:
         hasData = "false"
     else:
@@ -83,7 +107,7 @@ def query_hek(
         "https://www.lmsal.com/hek/hcr?cmd=search-events3"
         "&outputformat=json"
         f"&startTime={time_start.strftime(format_spec)}"
-        f"&stopTime={time_stop.strftime(format_spec)}"
+        f"&stopTime={stop.strftime(format_spec)}"
         f"&hasData={hasData}"
         "&hideMostLimbScans=true"
         f"&obsDesc={description}"
@@ -118,6 +142,7 @@ def urls_hek(
         2013-07-20 will be used.
     time_stop
         The end time of the search period. If :obj:`None`, the current time will be used.
+        It is rounded up to the next whole minute, as in :func:`query_hek`.
     description
         The description of the observation. If an empty string, observations with
         any description will be returned.
@@ -208,6 +233,10 @@ def download(
     Download the given URLs to a specified directory.
     If `overwrite` is :obj:`False`, the file will not be downloaded if it exists.
 
+    A near-real-time (NRT) file has the same name as the final file of the
+    same observation, so the NRT files are placed in a subdirectory, ``nrt``,
+    where they cannot be mistaken for the final files.
+
     Parameters
     ----------
     urls
@@ -216,6 +245,10 @@ def download(
         The directory to place the downloaded files.
     overwrite
         Boolean flag controlling whether to overwrite existing files.
+
+    Returns
+    -------
+    The paths of the downloaded files, sorted by file name.
 
 
     Examples
@@ -246,15 +279,50 @@ def download(
     for url in urls:
 
         file = directory / url.split("/")[~0]
+        if _is_nrt(url):
+            file = directory / "nrt" / file.name
 
         if overwrite or not file.exists():
+            file.parent.mkdir(parents=True, exist_ok=True)
             r = requests.get(url, stream=True)
             with open(file, "wb") as f:
                 f.write(r.content)
 
         result.append(file)
 
-    return sorted(result)
+    # The file names start with the time of the observation
+    return sorted(result, key=lambda file: file.name)
+
+
+def _is_nrt(url: str) -> bool:
+    """
+    Whether a URL is of near-real-time (NRT) data,
+    which LMSAL keeps in directories such as ``level2_nrt_compressed``.
+
+    Parameters
+    ----------
+    url
+        The URL of an IRIS file.
+    """
+    return any("_nrt" in part for part in url.split("/")[:~0])
+
+
+def _prefer_final(urls: list[str]) -> list[str]:
+    """
+    Remove the repeated URLs and the near-real-time (NRT) URLs of the files
+    whose final version is also in the list.
+
+    The NRT and the final file of an observation have the same name,
+    so the final file replaces the NRT file once LMSAL publishes it.
+
+    Parameters
+    ----------
+    urls
+        URLs of IRIS files, final and NRT.
+    """
+    urls = list(dict.fromkeys(urls))
+    final = {url.split("/")[~0] for url in urls if not _is_nrt(url)}
+    return [url for url in urls if not (_is_nrt(url) and url.split("/")[~0] in final)]
 
 
 def decompress(
@@ -308,13 +376,12 @@ def decompress(
 
     for archive in archives:
 
-        if directory is None:
-            directory = archive.parent
+        parent = archive.parent if directory is None else directory
 
-        destination = directory / pathlib.Path(archive.stem).stem
+        destination = parent / pathlib.Path(archive.stem).stem
 
         if overwrite or not destination.exists():
-            shutil.unpack_archive(archive, extract_dir=destination)
+            shutil.unpack_archive(archive, extract_dir=destination, filter="data")
 
         files = sorted(destination.rglob("*.fits"))
         result = result + files

@@ -45,6 +45,15 @@ and display as a false-color movie.
     obs.to_jshtml()
 
 
+Tutorials
+=========
+
+.. toctree::
+    :maxdepth: 1
+
+    tutorials/sji_movie
+
+
 Citation
 ========
 

@@ -143,6 +143,8 @@ class SpectrographObservation(
                 **kwargs,
             )
 
+        urls = iris.data._prefer_final(urls)
+
         archives = iris.data.download(urls)
         fits = iris.data.decompress(archives)
         fits = na.ScalarArray(np.array(fits), axes="time")
