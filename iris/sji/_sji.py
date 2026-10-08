@@ -1,6 +1,6 @@
 import astropy.units as u
 import astropy.time
-from ._slit_jaw import SlitJawObservation
+from ._slit_jaw import SlitJawObservation, _download
 
 __all__ = [
     "open",
@@ -21,9 +21,13 @@ def open(
     num_retry: int = 5,
 ) -> SlitJawObservation:
     """
-    Download the IRIS slit-jaw images which began during a given time range
-    and load them into memory as an instance of
+    Download IRIS slit-jaw images and load them into memory as an instance of
     :class:`~iris.sji.SlitJawObservation`.
+
+    If `time_stop` is :obj:`None`, every frame of the observations running
+    during the minute after `time` is loaded, as :func:`iris.sg.open` does.
+    Otherwise, only the frames which began between `time` and `time_stop`
+    are loaded.
 
     Parameters
     ----------
@@ -31,7 +35,8 @@ def open(
         The start time of the search period.
     time_stop
         The end time of the search period.
-        If :obj:`None`, 1 minute will be added to `time`.
+        If :obj:`None`, the search period is the minute after `time`,
+        and every frame of the observations found is loaded.
     description
         The description of the observation. If an empty string, observations with
         any description will be returned.
@@ -58,7 +63,22 @@ def open(
     time = astropy.time.Time(time)
 
     if time_stop is None:
-        time_stop = time + 1 * u.min
+        files = _download(
+            time_start=time,
+            time_stop=time + 1 * u.min,
+            description=description,
+            obs_id=obs_id,
+            window=window,
+            limit=limit,
+            nrt=nrt,
+            num_retry=num_retry,
+        )
+        return SlitJawObservation.from_fits(
+            path=files,
+            axis_time=axis_time,
+            axis_detector_x=axis_detector_x,
+            axis_detector_y=axis_detector_y,
+        )
 
     time_stop = astropy.time.Time(time_stop)
 

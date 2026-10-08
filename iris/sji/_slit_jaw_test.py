@@ -39,7 +39,7 @@ def _write(
     num_x: int,
     num_y: int,
     window: None | str = None,
-    unknown: None | int = None,
+    unknown: None | int | slice = None,
 ) -> pathlib.Path:
     """
     Write the first few frames of a real slit-jaw file, cut down to a corner
@@ -61,7 +61,7 @@ def _write(
     window
         If not :obj:`None`, the channel the new file says it is.
     unknown
-        If not :obj:`None`, the index of a frame whose pointing is recorded
+        If not :obj:`None`, the index of the frames whose pointing is recorded
         as unknown.
     """
     with astropy.io.fits.open(_path()) as hdul:
@@ -170,10 +170,10 @@ def test_inputs_against_astropy_wcs():
 
     result = iris.sji.SlitJawObservation.from_fits(path)
 
-    hdul = astropy.io.fits.open(path)
-    header = hdul[0].header
-    aux = hdul[1].data
-    header_aux = hdul[1].header
+    with astropy.io.fits.open(path) as hdul:
+        header = hdul[0].header.copy()
+        aux = hdul[1].data.copy()
+        header_aux = hdul[1].header.copy()
 
     inputs = result.inputs
     shape = inputs.shape_wcs
@@ -310,6 +310,23 @@ def test_from_fits_unknown_pointing(tmp_path: pathlib.Path):
         assert actual[key][0] == column[0]
         assert np.isclose(actual[key][1], (column[0] + column[2]) / 2, rtol=1e-12)
         assert actual[key][2] == column[2]
+
+
+def test_from_fits_unknown_pointing_every_frame(tmp_path: pathlib.Path):
+    path = _write(
+        tmp_path / "a.fits", num_time=3, num_x=10, num_y=10, unknown=slice(None)
+    )
+
+    with pytest.raises(ValueError, match=r"XCENIX of .*a\.fits is zero"):
+        iris.sji.SlitJawObservation.from_fits(path)
+
+
+def test_timedelta_default():
+    """Each instance gets its own default exposure time."""
+    a = iris.sji.SlitJawObservation(inputs=na.ScalarArray(0), outputs=na.ScalarArray(0))
+    b = iris.sji.SlitJawObservation(inputs=na.ScalarArray(0), outputs=na.ScalarArray(0))
+    assert a.timedelta == 0 * u.s
+    assert a.timedelta is not b.timedelta
 
 
 def test_from_time_range_no_window():

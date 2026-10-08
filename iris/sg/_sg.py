@@ -31,7 +31,7 @@ def open(
         The start time of the search period.
     time_stop
         The end time of the search period.
-        If :obj:`None`, 1 second will be added to `time` which usually has the
+        If :obj:`None`, 1 minute will be added to `time` which usually has the
         effect of selecting one observation.
     description
         The description of the observation. If an empty string, observations with
