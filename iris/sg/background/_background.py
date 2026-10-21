@@ -630,6 +630,7 @@ def smooth(
                 label=f"average spectral radiance ({obs.outputs.unit})",
             )
     """
+    obs = obs.copy_shallow()
     obs.outputs = na.ndfilters.trimmed_mean_filter(
         array=obs.outputs,
         size={axis_wavelength: 21},

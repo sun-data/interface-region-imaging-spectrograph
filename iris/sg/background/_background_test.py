@@ -168,6 +168,29 @@ def test_subtract_spectral_line():
         )
 
 
+def test_smooth():
+    """
+    The observation is left as it was, and a spectrum which is NaN, like one
+    whose fit did not converge, is filled in from its neighbors.
+    """
+
+    def profile(velocity: na.AbstractScalar) -> na.AbstractScalar:
+        return 3 * u.DN + 0.002 * u.DN / (u.km / u.s) * velocity
+
+    obs = observation(profile, num_x=4, num_y=6)
+    avg = iris.sg.background.average(obs, axis=(obs.axis_time, obs.axis_detector_x))
+    avg.outputs[{avg.axis_detector_y: 2}] = np.nan
+    outputs = avg.outputs.copy()
+
+    result = iris.sg.background.smooth(
+        obs=avg,
+        axis_wavelength=avg.axis_wavelength,
+        axis_detector_y=avg.axis_detector_y,
+    )
+    assert np.array_equal(avg.outputs, outputs, equal_nan=True)
+    assert np.all(np.isfinite(result.outputs))
+
+
 def test_estimate_lines():
     """
     The lines given by `wavelength_rest` are removed from the background,
