@@ -2,7 +2,9 @@ import pytest
 import numpy as np
 import astropy.units as u
 import astropy.time
+import named_arrays as na
 import iris
+from iris.sg._fit_line_test import observation, _wavelength_rest
 
 
 @pytest.mark.parametrize(
@@ -29,3 +31,85 @@ def test_estimate(
     where = np.isfinite(result.outputs)
     assert np.all(result.outputs > -10 * u.DN, where=where)
     assert np.all(result.outputs < +10 * u.DN, where=where)
+
+
+def test_fit():
+    """
+    The fit recovers the parameters of :func:`iris.sg.background.model_total`
+    from noisy spectra, and names them as its arguments.
+    """
+    velocity = na.linspace(-150, 150, axis="wavelength", num=61) * u.km / u.s
+    truth = dict(
+        amplitude=na.ScalarArray(np.array([50.0, 100, 200]), "row") * u.DN,
+        shift=na.ScalarArray(np.array([-5.0, 0, 8]), "row") * u.km / u.s,
+        width=25 * u.km / u.s,
+        kappa=1.5,
+        bias=3 * u.DN,
+        slope=0.004 * u.DN / (u.km / u.s),
+    )
+    data = na.random.normal(
+        iris.sg.background.model_total(velocity, **truth),
+        0.3 * u.DN,
+        seed=0,
+    )
+
+    result = iris.sg.background.fit(
+        data=data,
+        velocity=velocity,
+        axis_wavelength="wavelength",
+    )
+
+    assert set(result.components) == set(truth)
+    for name in ("amplitude", "shift", "width", "bias", "slope"):
+        assert np.allclose(
+            result.components[name],
+            truth[name],
+            rtol=0.05,
+            atol=0.5 * na.unit_normalized(truth[name]),
+        ), name
+    assert np.allclose(result.kappa, truth["kappa"], rtol=0.2)
+
+
+def test_estimate_lines():
+    """
+    The lines given by `wavelength_rest` are removed from the background,
+    while a line which is not given is left in it.
+    """
+    shift = 250 * u.km / u.s
+    wavelength_second = _wavelength_rest * (1 + shift / (299792.458 * u.km / u.s))
+
+    def background(velocity: na.AbstractScalar) -> na.AbstractScalar:
+        return 3 * u.DN + 0.002 * u.DN / (u.km / u.s) * velocity
+
+    def profile(velocity: na.AbstractScalar) -> na.AbstractScalar:
+        lines = sum(
+            iris.sg.background.model_spectral_line(
+                velocity=velocity - v0,
+                amplitude=60 * u.DN,
+                shift=0 * u.km / u.s,
+                width=20 * u.km / u.s,
+                kappa=3,
+            )
+            for v0 in (0 * u.km / u.s, shift)
+        )
+        return lines + background(velocity)
+
+    obs = observation(profile, num_wavelength=161)
+
+    def error(wavelength_rest: None | u.Quantity) -> na.AbstractScalar:
+        result = iris.sg.background.estimate(
+            obs=obs,
+            axis_time=obs.axis_time,
+            axis_wavelength=obs.axis_wavelength,
+            axis_detector_x=obs.axis_detector_x,
+            axis_detector_y=obs.axis_detector_y,
+            wavelength_rest=wavelength_rest,
+        )
+        velocity = result.inputs.velocity.cell_centers()
+        return np.abs(result.outputs - background(velocity))
+
+    both = error(u.Quantity([_wavelength_rest, wavelength_second]))
+    assert np.nanmax(both) < 1 * u.DN
+
+    first = error(None)
+    assert np.nanmax(first) > 5 * u.DN

@@ -1,7 +1,10 @@
+from typing import cast
+import dataclasses
 import numpy as np
 import astropy.units as u
 import named_arrays as na
 from .._spectrograph import SpectrographObservation
+from ..models import kappa_linear
 
 __all__ = [
     "average",
@@ -199,62 +202,6 @@ def model_total(
     return line + bg
 
 
-def _objective(
-    data: na.AbstractScalar,
-    velocity: na.AbstractScalar,
-    axis_wavelength: str,
-    amplitude: na.AbstractScalar,
-    shift: na.AbstractScalar,
-    width: na.AbstractScalar,
-    kappa: na.AbstractScalar,
-    bias: u.Quantity | na.AbstractScalar,
-    slope: u.Quantity | na.AbstractScalar,
-    where: bool | na.AbstractScalar = True,
-) -> na.AbstractScalar:
-    """
-    The function which is minimized during background fitting
-
-    Parameters
-    ----------
-    data
-        The observation to be fitted.
-    velocity
-        The Doppler velocity for each point in the observation.
-    axis_wavelength
-        The logical axis corresponding to increasing wavelength (velocity).
-    amplitude
-        The height of the spectral line.
-    shift
-        The center of the spectral line.
-    width
-        The width of the spectral line.
-    kappa
-        The fatness of the tails of the spectral line.
-    bias
-        The :math:`y`-intercept of the model.
-    slope
-        The linear slope of the model.
-    where
-        The points in the observation to consider when fitting.
-    """
-
-    model = model_total(
-        velocity=velocity,
-        amplitude=amplitude,
-        shift=shift,
-        width=width,
-        kappa=kappa,
-        bias=bias,
-        slope=slope,
-    )
-
-    diff = data - model
-
-    result = np.sqrt(np.sum(np.square(diff), axis=axis_wavelength, where=where))
-
-    return result
-
-
 def fit(
     data: na.AbstractScalar,
     velocity: na.AbstractScalar,
@@ -262,8 +209,13 @@ def fit(
     where: bool | na.AbstractScalar = True,
 ) -> na.CartesianNdVectorArray:
     """
-    Compute the parameters of :func:`model_total` which best fit `data` using
-    the gradient descent method.
+    Compute the parameters of :func:`model_total` which best fit `data`,
+    using the Levenberg-Marquardt method of :func:`ndoptimize.least_squares`.
+
+    The compiled form of :func:`model_total`,
+    :func:`iris.sg.models.kappa_linear`, is fit to each spectrum along
+    `axis_wavelength` with :class:`named_arrays.ModelFitFunctionArray`,
+    giving every point the same weight.
 
     Parameters
     ----------
@@ -275,6 +227,13 @@ def fit(
         The logical axis corresponding to increasing wavelength (velocity).
     where
         The points in the observation to consider when fitting.
+
+    Returns
+    -------
+    :
+        The best-fit parameters, a vector whose components are the arguments
+        of :func:`model_total` named ``amplitude``, ``shift``, ``width``,
+        ``kappa``, ``bias``, and ``slope``.
 
     Examples
     --------
@@ -358,75 +317,66 @@ def fit(
             ax.legend();
     """
 
-    def function(x: na.CartesianNdVectorArray):
-        x = x.components
+    # the model sees each parameter in the unit of its guess, so the guess is
+    # in the units of the velocity and of the data
+    unit_velocity = na.unit_normalized(velocity)
+    unit_data = na.unit_normalized(data)
 
-        return _objective(
-            data=data,
-            velocity=velocity,
-            axis_wavelength=axis_wavelength,
-            amplitude=x["amplitude"],
-            shift=x["shift"],
-            width=x["width"],
-            kappa=x["kappa"],
-            bias=x["bias"],
-            slope=x["slope"],
-            where=where,
-        )
-
-    data_nan = np.where(where, data, np.nan)
-
-    guess = dict(
-        # amplitude=np.percentile(img, 99, axis=axis_wavelength),
-        amplitude=np.nanpercentile(
-            a=data_nan,
-            q=99.9,
-            axis=axis_wavelength,
-        ),
-        shift=0 * u.km / u.s,
-        width=20 * u.km / u.s,
-        kappa=1.1,
-        bias=0 * u.DN,
-        slope=0 * u.DN / (u.km / u.s),
-    )
-    guess = na.CartesianNdVectorArray.from_components(guess)
-
-    result = na.optimize.minimum_gradient_descent(
-        function=function,
-        guess=guess,
-        step_size=na.CartesianNdVectorArray.from_components(
-            components=dict(
-                amplitude=0.01 * u.DN,
-                shift=0.01 * (u.km / u.s) ** 2 / u.DN,
-                width=0.01 * (u.km / u.s) ** 2 / u.DN,
-                bias=0.001 * u.DN,
-                kappa=0.0001 / u.DN,
-                slope=1e-6 * u.DN / (u.km / u.s) ** 2,
+    guess = na.CartesianNdVectorArray(
+        dict(
+            amplitude=np.nanpercentile(
+                a=np.where(where, data, np.nan),
+                q=99.9,
+                axis=axis_wavelength,
             ),
-        ),
-        momentum=0.9,
-        min_gradient=na.CartesianNdVectorArray.from_components(
-            components=dict(
-                amplitude=0.5,
-                shift=0.5 * u.DN / (u.km / u.s),
-                width=0.5 * u.DN / (u.km / u.s),
-                kappa=0.5 * u.DN,
-                bias=1,
-                slope=110 * (u.km / u.s),
-            )
-        ),
-        max_iterations=10000,
+            center=0 * unit_velocity,
+            width=(20 * u.km / u.s).to(unit_velocity),
+            kappa=1.1,
+            slope=0 * unit_data / unit_velocity,
+            intercept=0 * unit_data,
+        )
     )
-    return result
+
+    result = na.ModelFitFunctionArray(
+        inputs=velocity,
+        outputs=data,
+        model=kappa_linear,
+        guess=guess,
+        variance=1 * unit_data**2,
+        axis_model=axis_wavelength,
+        where_model=where,
+        lower=na.CartesianNdVectorArray(
+            dict(width=1 * u.km / u.s, kappa=0.1),
+        ),
+        upper=na.CartesianNdVectorArray(
+            dict(kappa=1000),
+        ),
+    )
+
+    p = result.parameters.components
+    return na.CartesianNdVectorArray(
+        dict(
+            amplitude=p["amplitude"],
+            shift=p["center"],
+            width=p["width"],
+            kappa=p["kappa"],
+            bias=p["intercept"],
+            slope=p["slope"],
+        )
+    )
 
 
 def subtract_spectral_line(
     obs: SpectrographObservation,
     axis_wavelength: str,
+    wavelength_rest: None | u.Quantity | na.AbstractScalar = None,
 ) -> SpectrographObservation:
     """
     Fit `obs` using :func:`fit` and subtract the :func:`model_spectral_line`
     component.
+
+    Each line is fit to the pixels within :math:`150 \\, \\text{km/s}` of its
+    rest wavelength.
 
     Parameters
     ----------
@@ -434,6 +384,13 @@ def subtract_spectral_line(
         The observation to remove the spectral line from.
     axis_wavelength
         The logical axis corresponding to increasing wavelength.
+    wavelength_rest
+        The rest wavelengths of the spectral lines to remove.
+        Several lines are given along an axis which `obs` does not have, or
+        as a one-dimensional :class:`~astropy.units.Quantity`.
+        If :obj:`None` (the default), the rest wavelength of `obs`, that of
+        the line which names its spectral window, so that any other line in
+        the window is left in the result.
 
     Examples
     --------
@@ -490,7 +447,25 @@ def subtract_spectral_line(
 
     where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > 0.7
 
-    velocity = obs.inputs.velocity.cell_centers()
+    inputs = obs.inputs
+    if wavelength_rest is not None:
+        if not isinstance(wavelength_rest, na.AbstractArray):
+            # the lines of a plain quantity go along an axis of their own
+            wavelength_rest = na.ScalarArray(
+                ndarray=wavelength_rest,
+                axes=("_line",) * np.ndim(wavelength_rest),
+            )
+        inputs = dataclasses.replace(inputs, wavelength_rest=wavelength_rest)
+
+    # each line is fit on its own, along the axes of the lines
+    axis_line = tuple(
+        axis for axis in na.shape(inputs.wavelength_rest) if axis not in obs.shape
+    )
+
+    velocity = cast(na.AbstractScalar, inputs.velocity)
+    velocity = velocity.cell_centers(
+        axis=tuple(axis for axis in velocity.shape if axis not in axis_line),
+    )
     velocity = velocity[where_crop]
 
     where = np.abs(velocity) < 150 * u.km / u.s
@@ -511,6 +486,8 @@ def subtract_spectral_line(
         width=parameters.components["width"],
         kappa=parameters.components["kappa"],
     )
+    if axis_line:
+        model_fit_line = model_fit_line.sum(axis=axis_line)
 
     obs = obs.copy_shallow()
     obs.outputs[where_crop] = data - model_fit_line
@@ -610,6 +587,7 @@ def estimate(
     axis_wavelength: str,
     axis_detector_x: str,
     axis_detector_y: str,
+    wavelength_rest: None | u.Quantity | na.AbstractScalar = None,
 ) -> SpectrographObservation:
     """
     Estimate the background from a given spectrograph observation.
@@ -630,6 +608,11 @@ def estimate(
         the slit.
     axis_detector_y
         The logical axis corresponding to changing position along the slit.
+    wavelength_rest
+        The rest wavelengths of the spectral lines to remove from the
+        background, see :func:`subtract_spectral_line`.
+        If :obj:`None` (the default), only the line which names the spectral
+        window is removed.
 
     Examples
     --------
@@ -765,6 +748,7 @@ def estimate(
     bg_0 = subtract_spectral_line(
         obs=avg,
         axis_wavelength=axis_wavelength,
+        wavelength_rest=wavelength_rest,
     )
     bg_1 = smooth(
         obs=bg_0,

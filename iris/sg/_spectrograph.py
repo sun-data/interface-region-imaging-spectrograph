@@ -476,6 +476,39 @@ class SpectrographObservation(
             outputs=outputs,
         )
 
+    @property
+    def variance(self) -> na.AbstractScalar:
+        """
+        The variance of the noise of each output, in :math:`\\text{DN}^2`.
+
+        It is the read noise of the CCD, :func:`iris.sg.read_noise`, plus the
+        photon noise of the signal, which is the variance of the number of
+        photons, the output times :func:`iris.sg.dn_to_photons`, converted
+        back to DN.
+        A negative output, which is noise around a dark current that has
+        been subtracted, has only the read noise.
+
+        The outputs must be in DN, as they are when the observation is
+        loaded, and each must be a single exposure: an average of several
+        has less noise than this.
+
+        Raises
+        ------
+        ValueError
+            If the outputs are not in DN.
+        """
+        outputs = self.outputs
+        if na.unit(outputs) != u.DN:
+            raise ValueError(
+                f"The variance is computed from outputs in DN, got outputs "
+                f"in {na.unit(outputs)}."
+            )
+        wavelength = self.inputs.wavelength_rest
+        signal = np.maximum(outputs, 0 * u.DN)
+        return np.square(iris.sg.read_noise(wavelength)) + signal * u.ph / (
+            iris.sg.dn_to_photons(wavelength)
+        )
+
     def show(
         self,
         index_time: int = 0,
