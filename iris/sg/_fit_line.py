@@ -43,9 +43,9 @@ def fit_line(
     :func:`ndoptimize.least_squares`, through
     :class:`named_arrays.ModelFitFunctionArray`, so a whole raster sequence is
     fit at once.
-    The model sees the Doppler velocity of the center of each wavelength
-    pixel, relative to `wavelength_rest`, and only the pixels within
-    `velocity_max` of it are fit.
+    The model sees the Doppler velocity of the center of each pixel,
+    relative to `wavelength_rest`, and only the pixels within `velocity_max`
+    of it are fit.
 
     Parameters
     ----------
@@ -60,6 +60,9 @@ def fit_line(
         :func:`iris.sg.models.kappa_linear`.
     wavelength_rest
         The rest wavelength of the line, which the velocities are relative to.
+        Several lines are given as a named array, along an axis which `obs`
+        does not have, and are fit separately, so the results vary along that
+        axis.
         If :obj:`None` (the default), the rest wavelength of the observation,
         that of the line which names its spectral window.
     velocity_max
@@ -70,11 +73,13 @@ def fit_line(
         If :obj:`None` (the default), it is found from the data, for a model
         whose parameters are among ``amplitude``, ``center``, ``width``,
         ``kappa``, ``slope``, and ``intercept``: the median of the outer half
-        of the fit as the intercept, no slope, the centroid of the inner half
-        above the intercept as the center, a width of
-        :math:`20 \, \mathrm{km \, s^{-1}}`, a :math:`\kappa` of 1.1, and the
-        amplitude of the Gaussian of that width whose area is the area of the
-        inner half above the intercept.
+        of the fit as the intercept, and no slope; a width of
+        :math:`20 \, \mathrm{km \, s^{-1}}` and a :math:`\kappa` of 1.1; the
+        centroid of the inner half on the side of the intercept that most of
+        it is on, above it for an emission line and below it for an
+        absorption line, as the center; and the amplitude at which the line
+        of the model, with that center, width, and :math:`\kappa`, has the
+        area of the inner half relative to the intercept.
     variance
         The variance of the noise of each output.
         If :obj:`None` (the default), that of a single exposure in DN,
@@ -85,19 +90,24 @@ def fit_line(
         first with the photon noise of the outputs and then with that of the
         model of the first fit.
     where
-        A boolean mask of the outputs to fit, along with the pixels within
+        A boolean mask of the outputs to fit, of the pixels within
         `velocity_max` of `wavelength_rest`.
         Outputs which are NaN are left out of their fit.
     lower
         The lower bounds of the parameters, a vector with a component for each
         parameter that has one.
         If :obj:`None` (the default), the center is at least `-velocity_max`,
-        the width at least :math:`1 \, \mathrm{km \, s^{-1}}`, and
+        the width at least half the spacing of the pixels in velocity, and
         :math:`\kappa` at least 0.1, for those of them that the model has.
+        A line narrower than that can fall between two pixels, where nothing
+        limits its amplitude.
     upper
         The upper bounds of the parameters, in the same form as `lower`.
         If :obj:`None` (the default), the center is at most `velocity_max`,
-        the width at most `velocity_max`, and :math:`\kappa` at most 1000.
+        the width at most half of `velocity_max`, and :math:`\kappa` at most
+        1000.
+        A line wider than that can take the place of a curve in the
+        continuum.
     prior_mean
         The means of the Gaussian priors of the parameters, a vector with a
         component for each parameter that has a prior.
@@ -118,15 +128,25 @@ def fit_line(
     Returns
     -------
     :
-        The fit, whose inputs are the velocities and whose outputs are those
-        of `obs`. Its parameters, their covariance, and the other results
-        of :class:`named_arrays.ModelFitFunctionArray` vary along the axes of
+        The fit of the pixels within `velocity_max` of the line, whose inputs
+        are their velocities and whose outputs are those of `obs`.
+        Its parameters, their covariance, and the other results of
+        :class:`named_arrays.ModelFitFunctionArray` vary along the axes of
         `obs` other than that of wavelength, and calling it evaluates the
         best-fit model at other velocities.
         Spectra with nothing to fit, such as the rows outside the slit, are
-        not converged, and neither are some fits of noise, which run into a
-        bound, so check
+        not converged, so check
         :attr:`~named_arrays.ModelFitFunctionArray.converged`.
+        A fit which ends with a parameter at one of its bounds is converged,
+        so compare the parameters with the bounds too, and the uncertainty
+        of a parameter which the data do not constrain, like the amplitude
+        of a line centered where the spectrum is missing, is infinite or NaN.
+
+    Raises
+    ------
+    ValueError
+        If `wavelength_rest` is an array without names, or if no pixel is
+        within `velocity_max` of it.
 
     Examples
     --------
@@ -188,14 +208,36 @@ def fit_line(
     """
     inputs = obs.inputs
     if wavelength_rest is not None:
+        # the fits of several lines vary along the axis of the lines, which
+        # an array without names does not have
+        named = isinstance(wavelength_rest, na.AbstractArray)
+        if not named and np.ndim(wavelength_rest) > 0:
+            raise ValueError(
+                f"Several rest wavelengths must be a named array, such as "
+                f"`na.ScalarArray(wavelength_rest, axes='line')`, so that the "
+                f"fits vary along its axis, got an array of shape "
+                f"{np.shape(wavelength_rest)}."
+            )
         inputs = dataclasses.replace(inputs, wavelength_rest=wavelength_rest)
 
-    # the velocity does not vary along the slit or across the raster, so only
-    # the centers of the pixels along the wavelength axis are needed
+    # the centers of the pixels along each axis of the detector the velocity
+    # varies along, along which the inputs are the vertices of the pixels
     velocity = cast(na.AbstractScalar, inputs.velocity)
-    velocity = velocity.cell_centers(obs.axis_wavelength)
+    axis_detector = (obs.axis_wavelength, obs.axis_detector_x, obs.axis_detector_y)
+    velocity = velocity.cell_centers(
+        axis=tuple(axis for axis in axis_detector if axis in velocity.shape),
+    )
 
-    where = where & (np.abs(velocity) <= velocity_max)
+    # only the pixels within `velocity_max` of the line in some spectrum
+    # are kept, so that the arrays of the fit are no larger than they need
+    # to be
+    inside = np.abs(velocity) <= velocity_max
+    index = _crop(inside, axis=obs.axis_wavelength)
+    obs = cast(SpectrographObservation, obs[index])
+    velocity = cast(na.AbstractScalar, velocity[index])
+    where = (where & inside)[index]
+    if isinstance(variance, na.AbstractArray):
+        variance = cast(na.AbstractScalar, variance[index])
 
     if guess is None:
         guess = _guess(
@@ -207,21 +249,16 @@ def fit_line(
             velocity_max=velocity_max,
         )
 
+    lower_default, upper_default = _bounds(
+        model=model,
+        velocity=velocity,
+        axis=obs.axis_wavelength,
+        velocity_max=velocity_max,
+    )
     if lower is None:
-        lower = _bounds(
-            model=model,
-            center=-velocity_max,
-            width=1 * u.km / u.s,
-            kappa=0.1,
-        )
-
+        lower = lower_default
     if upper is None:
-        upper = _bounds(
-            model=model,
-            center=velocity_max,
-            width=velocity_max,
-            kappa=1000,
-        )
+        upper = upper_default
 
     result = na.ModelFitFunctionArray(
         inputs=velocity,
@@ -255,6 +292,30 @@ def fit_line(
     return result
 
 
+def _crop(
+    inside: na.AbstractScalar,
+    axis: str,
+) -> dict[str, slice]:
+    """
+    The index of the shortest range along `axis` which holds every pixel
+    that is fit.
+
+    Parameters
+    ----------
+    inside
+        Whether each pixel is fit.
+    axis
+        The axis of wavelength.
+    """
+    # the index along `axis` of each pixel which is fit, in any spectrum
+    index = na.arange(0, inside.shape[axis], axis=axis).broadcast_to(inside.shape)
+    index = cast(na.ScalarArray, index[inside])
+    index = index.ndarray_aligned(tuple(index.shape))
+    if not index.size:
+        raise ValueError("No pixel is within `velocity_max` of `wavelength_rest`.")
+    return {axis: slice(int(index.min()), int(index.max()) + 1)}
+
+
 def _guess(
     model: ndoptimize.Model,
     velocity: na.AbstractArray,
@@ -267,6 +328,8 @@ def _guess(
     The initial guess of :func:`fit_line` for a model whose parameters are
     among those it knows: the amplitude, center, width, kappa, slope, and
     intercept of a line.
+
+    It is also the guess of :func:`iris.sg.background.fit`.
 
     Parameters
     ----------
@@ -306,27 +369,47 @@ def _guess(
             intercept = np.nanmedian(np.where(wing, data, np.nan), axis=axis)
         intercept = np.where(np.isfinite(intercept), intercept, 0 * unit_outputs)
 
-    step = np.abs(np.diff(velocity, axis=axis)).mean(axis)
     excess = np.where(wing, 0 * unit_outputs, data - intercept)
     area = np.nansum(excess, axis=axis)
-    amplitude = area * step / (width * np.sqrt(2 * np.pi))
 
-    # the centroid of the inner half above the intercept, since a fit which
-    # starts too far from the line can end with the straight line taking its
-    # place
-    excess = np.maximum(excess, 0 * unit_outputs)
+    # the centroid of the inner half on the side of the intercept that the
+    # line is on, above it for an emission line and below it for an
+    # absorption line, since a fit which starts too far from the line can end
+    # with the straight line taking its place
+    side = np.maximum(np.sign(area) * excess, 0 * unit_outputs)
     with np.errstate(divide="ignore", invalid="ignore"):
-        center = np.nansum(velocity * excess, axis=axis) / np.nansum(excess, axis=axis)
+        center = np.nansum(velocity * side, axis=axis) / np.nansum(side, axis=axis)
     center = np.where(np.isfinite(center), center, 0 * unit_velocity)
 
     components = dict(
-        amplitude=amplitude,
+        amplitude=1 * unit_outputs,
         center=center,
         width=width,
         kappa=_kappa,
         slope=0 * unit_outputs / unit_velocity,
-        intercept=intercept,
+        intercept=0 * unit_outputs,
     )
+
+    # the amplitude at which the line of the model has the area of the
+    # excess, from the line with an amplitude of one, evaluated by a fit which
+    # takes no steps, and summed over the same pixels as the excess
+    line = na.ModelFitFunctionArray(
+        inputs=velocity,
+        outputs=na.ScalarArray(0 * unit_outputs),
+        model=model,
+        guess=na.CartesianNdVectorArray(
+            {name: components[name] for name in model.parameters}
+        ),
+        variance=1 * unit_outputs**2,
+        axis_model=axis,
+        max_iterations=0,
+    ).predictions
+    line = line * (~wing & np.isfinite(data))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        # zero for a spectrum with no data in the inner half
+        amplitude = np.nan_to_num(area / line.sum(axis)) * unit_outputs
+
+    components |= dict(amplitude=amplitude, intercept=intercept)
     return na.CartesianNdVectorArray(
         {name: components[name] for name in model.parameters}
     )
@@ -334,19 +417,46 @@ def _guess(
 
 def _bounds(
     model: ndoptimize.Model,
-    **bounds: float | u.Quantity | na.AbstractArray,
-) -> na.CartesianNdVectorArray:
+    velocity: na.AbstractArray,
+    axis: str,
+    velocity_max: u.Quantity | na.AbstractScalar,
+) -> tuple[na.CartesianNdVectorArray, na.CartesianNdVectorArray]:
     """
-    The default bounds of :func:`fit_line`, for the parameters which the
-    model has.
+    The default lower and upper bounds of :func:`fit_line`, for the
+    parameters which the model has: the center within `velocity_max`, the
+    width from half the spacing of the pixels to half of `velocity_max`, and
+    kappa from 0.1 to 1000.
+
+    They are also the bounds of :func:`iris.sg.background.fit`.
 
     Parameters
     ----------
     model
         The model to fit.
-    bounds
-        The bound of each parameter, by its name.
+    velocity
+        The velocity of each output.
+    axis
+        The axis of wavelength.
+    velocity_max
+        The largest velocity of the outputs which are fit.
     """
-    return na.CartesianNdVectorArray(
-        {name: bounds[name] for name in model.parameters if name in bounds}
+    step = np.abs(np.diff(velocity, axis=axis)).mean(axis)
+    lower = dict(
+        center=-velocity_max,
+        width=step / 2,
+        kappa=0.1,
     )
+    upper = dict(
+        # a copy, so that changing the bound changes neither the argument
+        # nor the default of `velocity_max`
+        center=velocity_max.copy(),
+        width=velocity_max / 2,
+        kappa=1000,
+    )
+    lower_model, upper_model = (
+        na.CartesianNdVectorArray(
+            {name: bounds[name] for name in model.parameters if name in bounds}
+        )
+        for bounds in (lower, upper)
+    )
+    return lower_model, upper_model

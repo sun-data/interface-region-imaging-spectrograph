@@ -4,6 +4,7 @@ import numpy as np
 import astropy.units as u
 import named_arrays as na
 from .._spectrograph import SpectrographObservation
+from .._fit_line import _guess, _bounds
 from ..models import kappa_linear
 
 __all__ = [
@@ -16,6 +17,9 @@ __all__ = [
     "smooth",
     "estimate",
 ]
+
+_velocity_max = 150 * u.km / u.s
+"""The largest velocity, either way, of the pixels to which each line is fit."""
 
 
 def average(
@@ -207,6 +211,7 @@ def fit(
     velocity: na.AbstractScalar,
     axis_wavelength: str,
     where: bool | na.AbstractScalar = True,
+    velocity_max: u.Quantity | na.AbstractScalar = _velocity_max,
 ) -> na.CartesianNdVectorArray:
     """
     Compute the parameters of :func:`model_total` which best fit `data`,
@@ -216,6 +221,10 @@ def fit(
     :func:`iris.sg.models.kappa_linear`, is fit to each spectrum along
     `axis_wavelength` with :class:`named_arrays.ModelFitFunctionArray`,
     giving every point the same weight.
+    The fit starts from the default guess of :func:`iris.sg.fit_line` and
+    has its default bounds: the center within `velocity_max`, the width from
+    half the spacing of the points in velocity to half of `velocity_max`,
+    and :math:`\\kappa` from 0.1 to 1000.
 
     Parameters
     ----------
@@ -226,7 +235,10 @@ def fit(
     axis_wavelength
         The logical axis corresponding to increasing wavelength (velocity).
     where
-        The points in the observation to consider when fitting.
+        The points in the observation to consider when fitting, of those
+        within `velocity_max` of zero.
+    velocity_max
+        The largest velocity, either way, of the points which are fit.
 
     Returns
     -------
@@ -234,6 +246,8 @@ def fit(
         The best-fit parameters, a vector whose components are the arguments
         of :func:`model_total` named ``amplitude``, ``shift``, ``width``,
         ``kappa``, ``bias``, and ``slope``.
+        The parameters of a spectrum whose fit did not converge, like one
+        with no points to fit, are NaN.
 
     Examples
     --------
@@ -274,12 +288,11 @@ def fit(
         velocity = velocity[where_crop]
 
         # Fit the data within +/- 150 km/s of line center
-        where = np.abs(velocity) < 150 * u.km / u.s
         parameters = iris.sg.background.fit(
             data=data,
             velocity=velocity,
             axis_wavelength=obs.axis_wavelength,
-            where=where,
+            velocity_max=150 * u.km / u.s,
         )
 
         # Evaluate the model with the best-fit parameters
@@ -317,24 +330,22 @@ def fit(
             ax.legend();
     """
 
-    # the model sees each parameter in the unit of its guess, so the guess is
-    # in the units of the velocity and of the data
-    unit_velocity = na.unit_normalized(velocity)
-    unit_data = na.unit_normalized(data)
+    where = where & (np.abs(velocity) <= velocity_max)
 
-    guess = na.CartesianNdVectorArray(
-        dict(
-            amplitude=np.nanpercentile(
-                a=np.where(where, data, np.nan),
-                q=99.9,
-                axis=axis_wavelength,
-            ),
-            center=0 * unit_velocity,
-            width=(20 * u.km / u.s).to(unit_velocity),
-            kappa=1.1,
-            slope=0 * unit_data / unit_velocity,
-            intercept=0 * unit_data,
-        )
+    guess = _guess(
+        model=kappa_linear,
+        velocity=velocity,
+        outputs=data,
+        where=where,
+        axis=axis_wavelength,
+        velocity_max=velocity_max,
+    )
+
+    lower, upper = _bounds(
+        model=kappa_linear,
+        velocity=velocity,
+        axis=axis_wavelength,
+        velocity_max=velocity_max,
     )
 
     result = na.ModelFitFunctionArray(
@@ -342,27 +353,29 @@ def fit(
         outputs=data,
         model=kappa_linear,
         guess=guess,
-        variance=1 * unit_data**2,
+        variance=1 * na.unit_normalized(data) ** 2,
         axis_model=axis_wavelength,
         where_model=where,
-        lower=na.CartesianNdVectorArray(
-            dict(width=1 * u.km / u.s, kappa=0.1),
-        ),
-        upper=na.CartesianNdVectorArray(
-            dict(kappa=1000),
-        ),
+        lower=lower,
+        upper=upper,
     )
 
+    # the arguments of `model_total` by the names of the parameters of
+    # `kappa_linear`
+    names = dict(
+        amplitude="amplitude",
+        shift="center",
+        width="width",
+        kappa="kappa",
+        bias="intercept",
+        slope="slope",
+    )
     p = result.parameters.components
     return na.CartesianNdVectorArray(
-        dict(
-            amplitude=p["amplitude"],
-            shift=p["center"],
-            width=p["width"],
-            kappa=p["kappa"],
-            bias=p["intercept"],
-            slope=p["slope"],
-        )
+        {
+            name: np.where(result.converged, p[name_model], np.nan)
+            for name, name_model in names.items()
+        }
     )
 
 
@@ -375,8 +388,10 @@ def subtract_spectral_line(
     Fit `obs` using :func:`fit` and subtract the :func:`model_spectral_line`
     component.
 
-    Each line is fit to the pixels within :math:`150 \\, \\text{km/s}` of its
-    rest wavelength.
+    Each line is fit on its own, to the pixels within
+    :math:`150 \\, \\text{km/s}` of its rest wavelength.
+    A spectrum whose fit did not converge is NaN in the result, for
+    :func:`smooth` to fill in.
 
     Parameters
     ----------
@@ -391,6 +406,13 @@ def subtract_spectral_line(
         If :obj:`None` (the default), the rest wavelength of `obs`, that of
         the line which names its spectral window, so that any other line in
         the window is left in the result.
+
+    Raises
+    ------
+    ValueError
+        If two of the lines are within :math:`150 \\, \\text{km/s}` of each
+        other, since the fit of each would take in the other, and the other
+        would be subtracted twice.
 
     Examples
     --------
@@ -461,6 +483,12 @@ def subtract_spectral_line(
     axis_line = tuple(
         axis for axis in na.shape(inputs.wavelength_rest) if axis not in obs.shape
     )
+    if axis_line:
+        _check_separation(
+            wavelength_rest=inputs.wavelength_rest,
+            axis=axis_line,
+            velocity_max=_velocity_max,
+        )
 
     velocity = cast(na.AbstractScalar, inputs.velocity)
     velocity = velocity.cell_centers(
@@ -468,15 +496,13 @@ def subtract_spectral_line(
     )
     velocity = velocity[where_crop]
 
-    where = np.abs(velocity) < 150 * u.km / u.s
-
     data = obs.outputs[where_crop]
 
     parameters = fit(
         data=data,
         velocity=velocity,
         axis_wavelength=axis_wavelength,
-        where=where,
+        velocity_max=_velocity_max,
     )
 
     model_fit_line = model_spectral_line(
@@ -489,10 +515,50 @@ def subtract_spectral_line(
     if axis_line:
         model_fit_line = model_fit_line.sum(axis=axis_line)
 
+    # a copy of the outputs, so that those of the caller are left as they are
     obs = obs.copy_shallow()
+    obs.outputs = obs.outputs.copy()
     obs.outputs[where_crop] = data - model_fit_line
 
     return obs
+
+
+def _check_separation(
+    wavelength_rest: na.AbstractScalar,
+    axis: tuple[str, ...],
+    velocity_max: u.Quantity,
+) -> None:
+    """
+    Raise a :class:`ValueError` if two lines are within `velocity_max` of
+    each other, since :func:`subtract_spectral_line` fits each line on its
+    own, to the pixels within `velocity_max` of it.
+
+    Parameters
+    ----------
+    wavelength_rest
+        The rest wavelengths of the lines.
+    axis
+        The axes along which the lines vary.
+    velocity_max
+        The largest velocity, either way, of the pixels to which each line is
+        fit.
+    """
+    # the velocity of each line relative to each other one, as in the inputs
+    # of a `SpectrographObservation`
+    lines = cast(na.AbstractScalar, wavelength_rest.combine_axes(axis, "_line"))
+    others = cast(na.AbstractScalar, wavelength_rest.combine_axes(axis, "_other"))
+    velocity = na.DopplerVectorArray(wavelength=others, wavelength_rest=lines).velocity
+    num = lines.shape["_line"]
+    other = na.arange(0, num, axis="_line") != na.arange(0, num, axis="_other")
+    separation = cast(na.ScalarArray, np.abs(velocity)[other])
+    separation = separation.ndarray_aligned(tuple(separation.shape)).min()
+    if separation <= velocity_max:
+        raise ValueError(
+            f"Two of the lines are {separation:.0f} apart, within the "
+            f"{velocity_max:.0f} to which each is fit, so the fit of each "
+            f"would take in the other, which would be subtracted twice. "
+            f"Give only one of them."
+        )
 
 
 def smooth(

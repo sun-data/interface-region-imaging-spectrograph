@@ -3,6 +3,7 @@ import dataclasses
 import pytest
 import numpy as np
 import astropy.units as u
+import astropy.constants
 import astropy.time
 import named_arrays as na
 import ndoptimize
@@ -19,12 +20,13 @@ def observation(
     num_wavelength: int = 81,
     wavelength_rest: u.Quantity = _wavelength_rest,
     dispersion: u.Quantity = 25.4 * u.mAA,
+    tilt: u.Quantity = 0 * u.mAA,
     seed: int = 0,
 ) -> iris.sg.SpectrographObservation:
     """
     A synthetic observation of a single raster, whose spectra are `profile`
-    of the Doppler velocity of each wavelength pixel, plus the read and
-    photon noise of :attr:`iris.sg.SpectrographObservation.variance`.
+    of the Doppler velocity of each pixel, plus the read and photon noise of
+    :attr:`iris.sg.SpectrographObservation.variance`.
 
     Parameters
     ----------
@@ -41,6 +43,9 @@ def observation(
         The rest wavelength of the observation.
     dispersion
         The width of a wavelength pixel.
+    tilt
+        The change of the wavelength from one pixel along the slit to the
+        next.
     seed
         The seed of the noise.
     """
@@ -63,10 +68,15 @@ def observation(
     inputs.cdelt.position.x = 0.35 * u.arcsec
     inputs.cdelt.position.y = 0.17 * u.arcsec
     inputs.pc.wavelength.components[obs.axis_wavelength] = 1
+    inputs.pc.wavelength.components[obs.axis_detector_y] = (tilt / dispersion).value
     inputs.pc.position.x.components[obs.axis_detector_x] = 1
     inputs.pc.position.y.components[obs.axis_detector_y] = 1
 
-    velocity = inputs.velocity.cell_centers(obs.axis_wavelength)
+    velocity = inputs.velocity
+    axis_detector = (obs.axis_wavelength, obs.axis_detector_x, obs.axis_detector_y)
+    velocity = velocity.cell_centers(
+        axis=tuple(axis for axis in axis_detector if axis in velocity.shape),
+    )
     mean = profile(velocity).broadcast_to(obs.outputs.shape)
     noise_free = dataclasses.replace(obs, outputs=mean)
     obs.outputs = na.random.normal(mean, np.sqrt(noise_free.variance), seed=seed)
@@ -119,6 +129,78 @@ def test_fit_line():
     chi2 = (result.chi2 / (result.num_points - 5)).ndarray
     assert 0.9 < np.mean(chi2) < 1.1
 
+    # only the pixels within `velocity_max` of the line are kept
+    assert np.all(np.abs(result.inputs) <= 100 * u.km / u.s)
+    assert result.outputs.shape["wavelength"] < obs.outputs.shape["wavelength"]
+
+
+def test_fit_line_bounds():
+    """
+    The default bounds keep the center within `velocity_max`, and the width
+    from half the spacing of the pixels to half of `velocity_max`, and
+    changing them leaves `velocity_max` as it was.
+    """
+    obs = observation(_gaussian_linear, num_y=2)
+    velocity_max = 100 * u.km / u.s
+    result = iris.sg.fit_line(obs, velocity_max=velocity_max)
+    assert np.all(result.converged)
+
+    step = (25.4 * u.mAA / _wavelength_rest * astropy.constants.c).to(u.km / u.s)
+    assert np.allclose(result.lower.width, step / 2)
+    assert result.upper.width == velocity_max / 2
+    assert result.lower.center == -velocity_max
+    assert result.upper.center == velocity_max
+
+    result.upper.center *= 2
+    assert velocity_max == 100 * u.km / u.s
+
+
+def test_fit_line_lines():
+    """
+    Several lines along an axis of their own are each fit on their own,
+    while several in an array without names are an error.
+    """
+    shift = 250 * u.km / u.s
+
+    def profile(velocity: na.AbstractScalar) -> na.AbstractScalar:
+        return sum(
+            100 * u.DN * np.exp(-np.square((velocity - v0) / (15 * u.km / u.s)) / 2)
+            for v0 in (0 * u.km / u.s, shift)
+        )
+
+    obs = observation(profile, num_x=4, num_y=4, num_wavelength=161)
+    velocity = na.ScalarArray(u.Quantity([0 * u.km / u.s, shift]), axes="line")
+    wavelength_rest = _wavelength_rest * (1 + velocity / astropy.constants.c)
+    result = iris.sg.fit_line(
+        obs,
+        wavelength_rest=wavelength_rest,
+        velocity_max=100 * u.km / u.s,
+    )
+    p = result.parameters
+    assert np.all(result.converged)
+    assert p.center.shape == dict(time=1, detector_x=4, detector_y=4, line=2)
+    assert np.all(np.abs(p.center) < 3 * u.km / u.s)
+    assert np.all(np.abs(p.amplitude - 100 * u.DN) < 15 * u.DN)
+
+    with pytest.raises(ValueError, match="must be a named array"):
+        iris.sg.fit_line(obs, wavelength_rest=wavelength_rest.ndarray)
+
+
+def test_fit_line_tilt():
+    """
+    The velocity of each pixel is that of its center along each axis of the
+    detector, so the wavelength can change along the slit.
+    """
+    obs = observation(_gaussian_linear, num_y=4, tilt=2 * u.mAA)
+    assert obs.axis_detector_y in obs.inputs.velocity.shape
+
+    result = iris.sg.fit_line(obs, velocity_max=100 * u.km / u.s)
+    assert np.all(result.converged)
+    x = na.linspace(0, 1, axis="detector_x", num=20)
+    error = result.parameters.center - (-10 + 20 * x) * u.km / u.s
+    sigma = np.sqrt(result.covariance.center.center)
+    assert np.all(np.abs(error) < 5 * sigma)
+
 
 def test_fit_line_wavelength_rest():
     """
@@ -137,6 +219,21 @@ def test_fit_line_wavelength_rest():
     assert np.all(np.abs(center) < 3 * u.km / u.s)
     center = iris.sg.fit_line(obs).parameters.center
     assert np.all(np.abs(center - shift) < 3 * u.km / u.s)
+
+    with pytest.raises(ValueError, match="No pixel is within"):
+        iris.sg.fit_line(obs, wavelength_rest=1403 * u.AA)
+
+
+def test_fit_line_variance():
+    """A variance which is given is kept for the pixels which are fit."""
+    obs = observation(_gaussian_linear, num_y=2)
+    result = iris.sg.fit_line(
+        obs,
+        variance=obs.variance,
+        velocity_max=100 * u.km / u.s,
+    )
+    assert np.all(result.converged)
+    assert na.shape(result.variance) == result.outputs.shape
 
 
 def test_fit_line_kappa():
@@ -160,6 +257,38 @@ def test_fit_line_kappa():
     assert np.abs(np.median(p.center.ndarray) - truth["shift"]) < 1 * u.km / u.s
     assert np.abs(np.median(p.width.ndarray) - truth["width"]) < 1 * u.km / u.s
     assert np.abs(np.median(p.kappa.ndarray) - truth["kappa"]) < 0.3
+
+    # the default guess has the area of the line of the model, while a
+    # Gaussian of the same width and area is 35% lower
+    guess = iris.sg.fit_line(
+        obs,
+        model=iris.sg.models.kappa_linear,
+        max_iterations=0,
+    ).parameters.amplitude
+    assert np.abs(np.median(guess.ndarray) / truth["amplitude"] - 1) < 0.1
+
+
+def test_fit_line_absorption():
+    """
+    An absorption line is fit from the default guess, whose center is the
+    centroid of the spectrum below the continuum.
+    """
+    center = 20 * u.km / u.s
+
+    def profile(velocity: na.AbstractScalar) -> na.AbstractScalar:
+        z = (velocity - center) / (15 * u.km / u.s)
+        return 200 * u.DN - 100 * u.DN * np.exp(-np.square(z) / 2)
+
+    obs = observation(profile, num_x=4, num_y=4)
+    guess = iris.sg.fit_line(obs, max_iterations=0).parameters
+    assert np.all(np.abs(guess.center - center) < 5 * u.km / u.s)
+    assert np.all(guess.amplitude < 0 * u.DN)
+
+    result = iris.sg.fit_line(obs)
+    assert np.all(result.converged)
+    p = result.parameters
+    assert np.all(np.abs(p.center - center) < 3 * u.km / u.s)
+    assert np.all(np.abs(p.amplitude + 100 * u.DN) < 15 * u.DN)
 
 
 def test_fit_line_guess():
