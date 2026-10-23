@@ -120,7 +120,8 @@ intersphinx_mapping = {
     'matplotlib': ('https://matplotlib.org/stable', None),
     'astropy': ('https://docs.astropy.org/en/stable/', None),
     'irispy': ('https://irispy.readthedocs.io/en/stable/', None),
-    'named_arrays': ('https://named-arrays.readthedocs.io/en/stable/', None)
+    'named_arrays': ('https://named-arrays.readthedocs.io/en/stable/', None),
+    'ndoptimize': ('https://ndoptimize.readthedocs.io/en/stable/', None),
 }
 
 

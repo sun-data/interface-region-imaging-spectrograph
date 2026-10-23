@@ -6,6 +6,7 @@ import named_arrays as na
 
 __all__ = [
     "dn_to_photons",
+    "read_noise",
     "width_slit",
     "effective_area",
 ]
@@ -33,6 +34,29 @@ def dn_to_photons(
         wavelength > 2000 * u.AA,
         18 * u.ph / u.DN,
         4 * u.ph / u.DN,
+    )
+
+
+def read_noise(
+    wavelength: u.Quantity | na.AbstractScalar,
+) -> u.Quantity:
+    """
+    Return the standard deviation of the noise added when a pixel of the
+    spectrograph CCDs is read out, given by :cite:t:`DePontieu2014`: 3.1 DN
+    for the FUV channel and 1.2 DN for the NUV channel.
+
+    A pixel summed on the CCD before it is read out is read out once, so it
+    has the same read noise as a single pixel.
+
+    Parameters
+    ----------
+    wavelength
+        The wavelength of the pixel, which says which channel it is in.
+    """
+    return np.where(
+        wavelength > 2000 * u.AA,
+        1.2 * u.DN,
+        3.1 * u.DN,
     )
 
 

@@ -23,7 +23,8 @@ dependencies = [
     "scipy",
     "sunpy",
     "irispy-lmsal>=0.8.1",
-    "named-arrays~=2.14",
+    "named-arrays~=2.16",
+    "ndoptimize~=0.2.0",
     "regridding>=3.5.1",
 ]
 dynamic = ["version"]
