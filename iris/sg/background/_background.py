@@ -1,10 +1,10 @@
 from typing import cast
-import dataclasses
+import warnings
 import numpy as np
 import astropy.units as u
 import named_arrays as na
 from .._spectrograph import SpectrographObservation
-from .._fit_line import _guess, _bounds
+from .._fit_line import _velocity, _check_separation, _guess, _bounds
 from ..models import kappa_linear
 
 __all__ = [
@@ -220,7 +220,9 @@ def fit(
     The compiled form of :func:`model_total`,
     :func:`iris.sg.models.kappa_linear`, is fit to each spectrum along
     `axis_wavelength` with :class:`named_arrays.ModelFitFunctionArray`,
-    giving every point the same weight.
+    giving every point of a spectrum the same weight, the variance of the
+    spectrum, so that whether the fit converges does not depend on the units
+    of `data`.
     The fit starts from the default guess of :func:`iris.sg.fit_line` and
     has its default bounds: the center within `velocity_max`, the width from
     half the spacing of the points in velocity to half of `velocity_max`,
@@ -348,12 +350,21 @@ def fit(
         velocity_max=velocity_max,
     )
 
+    # The fit stops when the decrease in chi-squared it predicts is below an
+    # absolute tolerance, so weighting by a variance in the units of the data
+    # would make it converge in some units and not in others.
+    with warnings.catch_warnings(), np.errstate(invalid="ignore"):
+        # a spectrum with nothing to fit, which does not converge
+        warnings.filterwarnings("ignore", "Degrees of freedom <= 0")
+        # of the points which are not NaN, since NaN is not equal to itself
+        variance = data.var(axis=axis_wavelength, where=data == data)
+
     result = na.ModelFitFunctionArray(
         inputs=velocity,
         outputs=data,
         model=kappa_linear,
         guess=guess,
-        variance=1 * na.unit_normalized(data) ** 2,
+        variance=variance,
         axis_model=axis_wavelength,
         where_model=where,
         lower=lower,
@@ -469,7 +480,9 @@ def subtract_spectral_line(
 
     where_crop = np.isfinite(obs.outputs).mean(obs.axis_wavelength) > 0.7
 
-    inputs = obs.inputs
+    # each line is fit on its own, along the axes of the lines, which `obs`
+    # does not have
+    axis_line: tuple[str, ...] = ()
     if wavelength_rest is not None:
         if not isinstance(wavelength_rest, na.AbstractArray):
             # the lines of a plain quantity go along an axis of their own
@@ -477,26 +490,17 @@ def subtract_spectral_line(
                 ndarray=wavelength_rest,
                 axes=("_line",) * np.ndim(wavelength_rest),
             )
-        inputs = dataclasses.replace(inputs, wavelength_rest=wavelength_rest)
+        axis_line = tuple(a for a in wavelength_rest.shape if a not in obs.shape)
+        if axis_line:
+            _check_separation(
+                wavelength_rest=wavelength_rest,
+                axis=axis_line,
+                velocity_max=_velocity_max,
+                advice="Each would then be subtracted twice, so give only one of them.",
+            )
 
-    # each line is fit on its own, along the axes of the lines
-    axis_line = tuple(
-        axis for axis in na.shape(inputs.wavelength_rest) if axis not in obs.shape
-    )
-    if axis_line:
-        _check_separation(
-            wavelength_rest=inputs.wavelength_rest,
-            axis=axis_line,
-            velocity_max=_velocity_max,
-        )
-
-    velocity = cast(na.AbstractScalar, inputs.velocity)
-    velocity = velocity.cell_centers(
-        axis=tuple(axis for axis in velocity.shape if axis not in axis_line),
-    )
-    velocity = velocity[where_crop]
-
-    data = obs.outputs[where_crop]
+    velocity = cast(na.AbstractScalar, _velocity(obs, wavelength_rest)[where_crop])
+    data = cast(na.AbstractScalar, obs.outputs[where_crop])
 
     parameters = fit(
         data=data,
@@ -521,44 +525,6 @@ def subtract_spectral_line(
     obs.outputs[where_crop] = data - model_fit_line
 
     return obs
-
-
-def _check_separation(
-    wavelength_rest: na.AbstractScalar,
-    axis: tuple[str, ...],
-    velocity_max: u.Quantity,
-) -> None:
-    """
-    Raise a :class:`ValueError` if two lines are within `velocity_max` of
-    each other, since :func:`subtract_spectral_line` fits each line on its
-    own, to the pixels within `velocity_max` of it.
-
-    Parameters
-    ----------
-    wavelength_rest
-        The rest wavelengths of the lines.
-    axis
-        The axes along which the lines vary.
-    velocity_max
-        The largest velocity, either way, of the pixels to which each line is
-        fit.
-    """
-    # the velocity of each line relative to each other one, as in the inputs
-    # of a `SpectrographObservation`
-    lines = cast(na.AbstractScalar, wavelength_rest.combine_axes(axis, "_line"))
-    others = cast(na.AbstractScalar, wavelength_rest.combine_axes(axis, "_other"))
-    velocity = na.DopplerVectorArray(wavelength=others, wavelength_rest=lines).velocity
-    num = lines.shape["_line"]
-    other = na.arange(0, num, axis="_line") != na.arange(0, num, axis="_other")
-    separation = cast(na.ScalarArray, np.abs(velocity)[other])
-    separation = separation.ndarray_aligned(tuple(separation.shape)).min()
-    if separation <= velocity_max:
-        raise ValueError(
-            f"Two of the lines are {separation:.0f} apart, within the "
-            f"{velocity_max:.0f} to which each is fit, so the fit of each "
-            f"would take in the other, which would be subtracted twice. "
-            f"Give only one of them."
-        )
 
 
 def smooth(

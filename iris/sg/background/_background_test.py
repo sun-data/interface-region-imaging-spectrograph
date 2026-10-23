@@ -71,6 +71,29 @@ def test_fit():
         assert np.all(np.abs(error) < tolerance[name]), name
 
 
+def test_fit_units():
+    """Whether the fit converges does not depend on the units of the data."""
+    velocity = na.linspace(-150, 150, axis="wavelength", num=61) * u.km / u.s
+    spectra = iris.sg.background.model_total(
+        velocity=velocity,
+        amplitude=na.linspace(50, 200, axis="row", num=50) * u.DN,
+        shift=0 * u.km / u.s,
+        width=25 * u.km / u.s,
+        kappa=1.5,
+        bias=3 * u.DN,
+        slope=0.004 * u.DN / (u.km / u.s),
+    )
+    data = na.random.normal(spectra, 0.3 * u.DN, seed=0)
+
+    # more than the factor from DN to the radiance of IRIS spectra
+    factor = 1e6 * u.erg / (u.cm**2 * u.sr * u.nm * u.s * u.DN)
+    p = iris.sg.background.fit(data, velocity, "wavelength").components
+    p_radiance = iris.sg.background.fit(data * factor, velocity, "wavelength")
+    for name, value in p_radiance.components.items():
+        scale = factor if name in ("amplitude", "bias", "slope") else 1
+        assert np.allclose(value, p[name] * scale, rtol=1e-6), name
+
+
 def test_fit_unconverged():
     """The parameters of a spectrum with nothing to fit are NaN."""
     velocity = na.linspace(-150, 150, axis="wavelength", num=61) * u.km / u.s
@@ -136,8 +159,9 @@ def test_fit_continuum():
 
 def test_subtract_spectral_line():
     """
-    The observation is left as it was, and lines closer than the pixels to
-    which each is fit are an error.
+    The observation is left as it was, one line in an array is the line of
+    the window, and lines closer than the pixels to which each is fit are an
+    error.
     """
 
     def profile(velocity: na.AbstractScalar) -> na.AbstractScalar:
@@ -155,8 +179,19 @@ def test_subtract_spectral_line():
     avg = iris.sg.background.average(obs, axis=(obs.axis_time, obs.axis_detector_x))
     outputs = avg.outputs.copy()
 
-    iris.sg.background.subtract_spectral_line(avg, avg.axis_wavelength)
+    result = iris.sg.background.subtract_spectral_line(avg, avg.axis_wavelength)
     assert np.all(avg.outputs == outputs)
+
+    for wavelength_rest in [
+        u.Quantity([_wavelength_rest]),
+        na.ScalarArray(u.Quantity([_wavelength_rest]), axes="line"),
+    ]:
+        result_array = iris.sg.background.subtract_spectral_line(
+            obs=avg,
+            axis_wavelength=avg.axis_wavelength,
+            wavelength_rest=wavelength_rest,
+        )
+        assert np.allclose(result_array.outputs, result.outputs)
 
     shift = 100 * u.km / u.s
     wavelength_close = _wavelength_rest * (1 + shift / (299792.458 * u.km / u.s))

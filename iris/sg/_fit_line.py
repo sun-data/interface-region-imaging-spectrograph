@@ -63,10 +63,13 @@ def fit_line(
         Several lines are given as a named array, along an axis which `obs`
         does not have, and are fit separately, so the results vary along that
         axis.
+        No two of them may be within `velocity_max` of each other, since the
+        fit of each would take in the other.
         If :obj:`None` (the default), the rest wavelength of the observation,
         that of the line which names its spectral window.
     velocity_max
         The largest velocity, either way, of the pixels which are fit.
+        It must be larger than the spacing of the pixels in velocity.
     guess
         The initial guess for the parameters, a vector whose components are
         the parameters named in :attr:`ndoptimize.Model.parameters`.
@@ -95,17 +98,21 @@ def fit_line(
         Outputs which are NaN are left out of their fit.
     lower
         The lower bounds of the parameters, a vector with a component for each
-        parameter that has one.
-        If :obj:`None` (the default), the center is at least `-velocity_max`,
-        the width at least half the spacing of the pixels in velocity, and
-        :math:`\kappa` at least 0.1, for those of them that the model has.
-        A line narrower than that can fall between two pixels, where nothing
-        limits its amplitude.
+        parameter whose bound is given.
+        The other parameters keep their default bounds, which an infinite
+        bound removes: the center at least `-velocity_max`, the width at
+        least half the spacing of the pixels in velocity, and :math:`\kappa`
+        at least 0.1, for those of them that the model has.
+        A Gaussian narrower than that can fall between two pixels, where
+        nothing limits its amplitude.
+        The core of the line of :func:`iris.sg.models.kappa_linear` is
+        narrower than its width when :math:`\kappa` is small, about a third
+        of a pixel wide at these bounds, so its amplitude can still be many
+        times the data where its core falls between two pixels.
     upper
         The upper bounds of the parameters, in the same form as `lower`.
-        If :obj:`None` (the default), the center is at most `velocity_max`,
-        the width at most half of `velocity_max`, and :math:`\kappa` at most
-        1000.
+        By default, the center is at most `velocity_max`, the width at most
+        half of `velocity_max`, and :math:`\kappa` at most 1000.
         A line wider than that can take the place of a curve in the
         continuum.
     prior_mean
@@ -145,8 +152,10 @@ def fit_line(
     Raises
     ------
     ValueError
-        If `wavelength_rest` is an array without names, or if no pixel is
-        within `velocity_max` of it.
+        If `wavelength_rest` is an array without names, if two of its lines
+        are within `velocity_max` of each other, if no pixel is within
+        `velocity_max` of it, or if `velocity_max` is not larger than the
+        spacing of the pixels.
 
     Examples
     --------
@@ -206,26 +215,42 @@ def fit_line(
                 axes.set_xlabel(f"helioprojective $x$ ({unit_x})")
             ax[0].set_ylabel(f"helioprojective $y$ ({unit_y})")
     """
-    inputs = obs.inputs
-    if wavelength_rest is not None:
+    if isinstance(wavelength_rest, na.AbstractArray):
+        # several lines are fit separately, along the axes of the lines,
+        # which `obs` does not have
+        axis_line = tuple(a for a in wavelength_rest.shape if a not in obs.shape)
+        if axis_line:
+            _check_separation(
+                wavelength_rest=wavelength_rest,
+                axis=axis_line,
+                velocity_max=velocity_max,
+                advice="Fit them with a `velocity_max` below their separation.",
+            )
+    elif wavelength_rest is not None and np.ndim(wavelength_rest) > 0:
         # the fits of several lines vary along the axis of the lines, which
         # an array without names does not have
-        named = isinstance(wavelength_rest, na.AbstractArray)
-        if not named and np.ndim(wavelength_rest) > 0:
-            raise ValueError(
-                f"Several rest wavelengths must be a named array, such as "
-                f"`na.ScalarArray(wavelength_rest, axes='line')`, so that the "
-                f"fits vary along its axis, got an array of shape "
-                f"{np.shape(wavelength_rest)}."
-            )
-        inputs = dataclasses.replace(inputs, wavelength_rest=wavelength_rest)
+        raise ValueError(
+            f"Several rest wavelengths must be a named array, such as "
+            f"`na.ScalarArray(wavelength_rest, axes='line')`, so that the "
+            f"fits vary along its axis, got an array of shape "
+            f"{np.shape(wavelength_rest)}."
+        )
 
-    # the centers of the pixels along each axis of the detector the velocity
-    # varies along, along which the inputs are the vertices of the pixels
-    velocity = cast(na.AbstractScalar, inputs.velocity)
-    axis_detector = (obs.axis_wavelength, obs.axis_detector_x, obs.axis_detector_y)
-    velocity = velocity.cell_centers(
-        axis=tuple(axis for axis in axis_detector if axis in velocity.shape),
+    velocity = _velocity(obs, wavelength_rest)
+
+    # a bound which is given takes the place of the default of its parameter,
+    # and the other parameters keep their defaults
+    lower_default, upper_default = _bounds(
+        model=model,
+        velocity=velocity,
+        axis=obs.axis_wavelength,
+        velocity_max=velocity_max,
+    )
+    lower = na.CartesianNdVectorArray(
+        lower_default.components | ({} if lower is None else lower.components)
+    )
+    upper = na.CartesianNdVectorArray(
+        upper_default.components | ({} if upper is None else upper.components)
     )
 
     # only the pixels within `velocity_max` of the line in some spectrum
@@ -248,17 +273,6 @@ def fit_line(
             axis=obs.axis_wavelength,
             velocity_max=velocity_max,
         )
-
-    lower_default, upper_default = _bounds(
-        model=model,
-        velocity=velocity,
-        axis=obs.axis_wavelength,
-        velocity_max=velocity_max,
-    )
-    if lower is None:
-        lower = lower_default
-    if upper is None:
-        upper = upper_default
 
     result = na.ModelFitFunctionArray(
         inputs=velocity,
@@ -290,6 +304,82 @@ def fit_line(
         )
 
     return result
+
+
+def _velocity(
+    obs: SpectrographObservation,
+    wavelength_rest: None | u.Quantity | na.AbstractScalar = None,
+) -> na.AbstractScalar:
+    """
+    The Doppler velocity of the center of each pixel of an observation.
+
+    It is also the velocity of
+    :func:`iris.sg.background.subtract_spectral_line`.
+
+    Parameters
+    ----------
+    obs
+        The observation.
+    wavelength_rest
+        The rest wavelength which the velocity is relative to.
+        If :obj:`None` (the default), that of `obs`.
+    """
+    inputs = obs.inputs
+    if wavelength_rest is not None:
+        inputs = dataclasses.replace(inputs, wavelength_rest=wavelength_rest)
+    velocity = cast(na.AbstractScalar, inputs.velocity)
+
+    # the inputs are the vertices of the pixels along each axis of the
+    # detector that they vary along
+    axis_detector = (obs.axis_wavelength, obs.axis_detector_x, obs.axis_detector_y)
+    velocity = velocity.cell_centers(
+        axis=tuple(axis for axis in axis_detector if axis in velocity.shape),
+    )
+    return cast(na.AbstractScalar, velocity)
+
+
+def _check_separation(
+    wavelength_rest: na.AbstractScalar,
+    axis: tuple[str, ...],
+    velocity_max: u.Quantity | na.AbstractScalar,
+    advice: str,
+) -> None:
+    """
+    Raise a :class:`ValueError` if two lines are within `velocity_max` of
+    each other, since each line is fit on its own, to the pixels within
+    `velocity_max` of it, and the fit of each would take in the other.
+
+    It is also the check of :func:`iris.sg.background.subtract_spectral_line`.
+
+    Parameters
+    ----------
+    wavelength_rest
+        The rest wavelengths of the lines.
+    axis
+        The axes along which the lines vary.
+    velocity_max
+        The largest velocity, either way, of the pixels to which each line is
+        fit.
+    advice
+        What to do instead, the last sentence of the error.
+    """
+    # the velocity of each line relative to each other one, as in the inputs
+    # of a `SpectrographObservation`
+    lines = cast(na.AbstractScalar, wavelength_rest.combine_axes(axis, "_line"))
+    others = cast(na.AbstractScalar, wavelength_rest.combine_axes(axis, "_other"))
+    velocity = na.DopplerVectorArray(wavelength=others, wavelength_rest=lines).velocity
+    separation = cast(na.AbstractScalar, np.abs(velocity))
+    num = lines.shape["_line"]
+    other = na.arange(0, num, axis="_line") != na.arange(0, num, axis="_other")
+    close = other & (separation <= velocity_max)
+    separation = cast(na.ScalarArray, separation.broadcast_to(close.shape)[close])
+    separation = separation.ndarray_aligned(tuple(separation.shape))
+    if separation.size:
+        raise ValueError(
+            f"Two of the lines are {separation.min():.0f} apart, within the "
+            f"{velocity_max} to which each is fit, so the fit of each would "
+            f"take in the other. {advice}"
+        )
 
 
 def _crop(
@@ -439,8 +529,19 @@ def _bounds(
         The axis of wavelength.
     velocity_max
         The largest velocity of the outputs which are fit.
+
+    Raises
+    ------
+    ValueError
+        If `velocity_max` is not larger than the spacing of the pixels, so
+        that the least width would exceed the greatest.
     """
     step = np.abs(np.diff(velocity, axis=axis)).mean(axis)
+    if np.any(step >= velocity_max):
+        raise ValueError(
+            f"`velocity_max`, {velocity_max}, must be larger than the spacing "
+            f"of the pixels in velocity, {np.max(step).ndarray:.2f}."
+        )
     lower = dict(
         center=-velocity_max,
         width=step / 2,

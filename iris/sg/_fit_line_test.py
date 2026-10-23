@@ -137,8 +137,10 @@ def test_fit_line():
 def test_fit_line_bounds():
     """
     The default bounds keep the center within `velocity_max`, and the width
-    from half the spacing of the pixels to half of `velocity_max`, and
-    changing them leaves `velocity_max` as it was.
+    from half the spacing of the pixels to half of `velocity_max`, a bound
+    which is given leaves the others as they were, changing them leaves
+    `velocity_max` as it was, and a `velocity_max` within the spacing of the
+    pixels is an error.
     """
     obs = observation(_gaussian_linear, num_y=2)
     velocity_max = 100 * u.km / u.s
@@ -154,11 +156,25 @@ def test_fit_line_bounds():
     result.upper.center *= 2
     assert velocity_max == 100 * u.km / u.s
 
+    result = iris.sg.fit_line(
+        obs,
+        velocity_max=velocity_max,
+        lower=na.CartesianNdVectorArray(dict(amplitude=0 * u.DN)),
+    )
+    assert result.lower.amplitude == 0 * u.DN
+    assert np.allclose(result.lower.width, step / 2)
+    assert result.lower.center == -velocity_max
+
+    with pytest.raises(ValueError, match="must be larger than the spacing"):
+        iris.sg.fit_line(obs, velocity_max=step / 2)
+
 
 def test_fit_line_lines():
     """
-    Several lines along an axis of their own are each fit on their own,
-    while several in an array without names are an error.
+    Several lines along an axis of their own are each fit on their own, and
+    so is one, while lines within `velocity_max` of each other, which the fit
+    of each would take in, and several in an array without names are an
+    error.
     """
     shift = 250 * u.km / u.s
 
@@ -181,6 +197,20 @@ def test_fit_line_lines():
     assert p.center.shape == dict(time=1, detector_x=4, detector_y=4, line=2)
     assert np.all(np.abs(p.center) < 3 * u.km / u.s)
     assert np.all(np.abs(p.amplitude - 100 * u.DN) < 15 * u.DN)
+
+    result = iris.sg.fit_line(
+        obs,
+        wavelength_rest=wavelength_rest[dict(line=slice(0, 1))],
+        velocity_max=100 * u.km / u.s,
+    )
+    assert result.parameters.center.shape["line"] == 1
+
+    with pytest.raises(ValueError, match="would take in the other"):
+        iris.sg.fit_line(
+            obs,
+            wavelength_rest=wavelength_rest,
+            velocity_max=300 * u.km / u.s,
+        )
 
     with pytest.raises(ValueError, match="must be a named array"):
         iris.sg.fit_line(obs, wavelength_rest=wavelength_rest.ndarray)

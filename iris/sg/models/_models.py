@@ -37,6 +37,10 @@ def kappa_linear(
     As :math:`\kappa` grows, the profile approaches the Gaussian
     :math:`A \exp(-(v - v_0)^2 / \sigma^2)`, whose standard deviation is
     :math:`\sigma / \sqrt{2}`.
+    Its full width at half maximum,
+    :math:`2 \sigma \sqrt{\kappa (2^{1 / (\kappa + 1)} - 1)}`, is
+    :math:`1.67 \sigma` for a large :math:`\kappa`, but only
+    :math:`0.59 \sigma` for :math:`\kappa = 0.1`.
 
     Parameters
     ----------
