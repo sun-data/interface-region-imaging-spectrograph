@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, cast
 from typing_extensions import Self
 import dataclasses
 import pathlib
@@ -17,6 +17,7 @@ import astropy.io.fits
 import astropy.visualization
 import named_arrays as na
 import iris
+from . import _cleaning
 
 __all__ = [
     "SpectrographObservation",
@@ -508,6 +509,355 @@ class SpectrographObservation(
         return np.square(iris.sg.read_noise(wavelength)) + signal * u.ph / (
             iris.sg.dn_to_photons(wavelength)
         )
+
+    def _data(self) -> na.ScalarArray:
+        """
+        The values of the outputs in DN, without units, for the tests of
+        :meth:`spikes`, :meth:`hot_pixels`, and :meth:`dark_rows`.
+
+        Raises
+        ------
+        ValueError
+            If the outputs are not in DN.
+        """
+        outputs = self.outputs
+        if na.unit(outputs) != u.DN:
+            raise ValueError(
+                f"The tests for bad pixels need outputs in DN, got outputs "
+                f"in {na.unit(outputs)}."
+            )
+        return cast(na.ScalarArray, outputs.value.explicit)
+
+    @property
+    def _axis_exposure(self) -> tuple[str, ...]:
+        """
+        The axes along which the exposures vary, :attr:`axis_time` and
+        :attr:`axis_detector_x`, those of them which the outputs have.
+        """
+        axis = (self.axis_time, self.axis_detector_x)
+        return tuple(a for a in axis if a in self.outputs.shape)
+
+    def spikes(
+        self,
+        sigclip: float = 4.5,
+        objlim: float = 5,
+        satlevel: u.Quantity = 16000 * u.DN,
+        limit: u.Quantity = 80 * u.DN,
+        sigma: float = 4.5,
+    ) -> na.ScalarArray:
+        r"""
+        Find the pixels hit by energetic particles, such as cosmic rays and
+        the protons trapped in the South Atlantic Anomaly.
+
+        Two tests find the hits, since each finds hits which the other
+        misses:
+
+        - L.A.Cosmic :cite:p:`vanDokkum2001`, on each exposure on its own,
+          through :func:`named_arrays.despike_mask`, with the gain,
+          :func:`iris.sg.dn_to_photons`, and the read noise,
+          :func:`iris.sg.read_noise`, of IRIS.
+          It finds a hit by its sharp edges, so it finds faint hits on faint
+          Sun.
+          On bright Sun it also flags the edges of bright features and the
+          thin, bright strands of lines such as :math:`\text{Si\,IV}`, which
+          are as sharp as a hit, so its flags are kept only where the Sun is
+          fainter than `limit`.
+          Without that limit, on the :math:`\text{Si\,IV}` line of a dense
+          raster, it flagged 1.7% of the pixels of 320 to 1280 DN, and 4.2%
+          of those above, most of them the Sun.
+        - The test of ``iris_prep_despike.pro`` by C. Kankelborg in
+          SolarSoft, which flags the pixels more than `sigma` standard
+          deviations above the mean of the good pixels in the box of
+          :math:`5 \times 5 \times 5` pixels around them, along the slit,
+          wavelength, and :attr:`axis_detector_x`.
+          The pixels it flags are no longer good, and it searches again
+          until it finds no more, up to 10 times.
+          Since the box spans the neighboring exposures, it finds hits on
+          bright Sun, but fewer of them than L.A.Cosmic does on faint Sun.
+
+        Level 2 data are resampled from the pixels of the detector, which
+        leaves a negative lobe around each hit, a median of 6% of its peak.
+        So the pixels next to a hit which are more than two standard
+        deviations of their noise below the Sun around them are hits too.
+        The Sun around a pixel is the mean of the middle 5 of the 25 pixels in
+        the :math:`5 \times 5` box around it, along the slit and wavelength,
+        which a hit and its lobe do not change.
+        On a bright, narrow line, that mean is less than the Sun at the
+        pixels next to the core, where the line curves, so only the deep
+        lobes of large hits are found there.
+
+        Parameters
+        ----------
+        sigclip
+            The detection limit of L.A.Cosmic, in standard deviations of the
+            noise.
+        objlim
+            The contrast limit of L.A.Cosmic between a hit and the fine
+            structure of the Sun around it.
+        satlevel
+            The level at and above which the detector is saturated.
+            L.A.Cosmic leaves saturated pixels on bright Sun, and the pixels
+            around them, alone.
+        limit
+            The brightest Sun around a pixel on which the flags of L.A.Cosmic
+            are kept.
+            An infinite limit keeps them all.
+        sigma
+            The detection limit of the test of ``iris_prep_despike.pro``, in
+            standard deviations.
+
+        Returns
+        -------
+        :
+            Whether each pixel was hit, along the same axes as the outputs.
+            Pixels without data, which are NaN, are not.
+
+        Raises
+        ------
+        ValueError
+            If the outputs are not in DN.
+
+        See Also
+        --------
+        clean : A copy of the observation without the hits.
+        """
+        wavelength = self.inputs.wavelength_rest
+        gain = iris.sg.dn_to_photons(wavelength)
+        read_noise = iris.sg.read_noise(wavelength)
+        result = _cleaning.spikes(
+            data=self._data(),
+            axis_exposure=self.axis_detector_x,
+            axis_image=(self.axis_detector_y, self.axis_wavelength),
+            gain=gain.to(u.ph / u.DN).value,
+            read_noise=read_noise.to(u.DN).value,
+            sigclip=sigclip,
+            objlim=objlim,
+            satlevel=satlevel.to(u.DN).value,
+            limit=limit.to(u.DN).value,
+            sigma=sigma,
+        )
+        return cast(na.ScalarArray, result)
+
+    def hot_pixels(
+        self,
+        spikes: None | na.AbstractScalar = None,
+        fraction: float = 0.5,
+        threshold: u.Quantity = 2 * u.DN,
+        limit: u.Quantity = 20 * u.DN,
+    ) -> na.ScalarArray:
+        """
+        Find the hot pixels of the detector, which are too bright in every
+        exposure.
+
+        A pixel is hot if it is a spike, :meth:`spikes`, in more than
+        `fraction` of the exposures in which it has data, or if its fixed
+        pattern is larger than `threshold` either way, where the Sun is
+        fainter than `limit`.
+        The fixed pattern is found along the slit: it is the interquartile
+        mean of each pixel over the exposures, without the spikes, minus
+        the 25% trimmed mean of that over the 15 pixels around it along the
+        slit.
+        It must also be more than five times its uncertainty, from the noise
+        of the outputs, :attr:`variance`, so that a short observation does
+        not make noisy pixels hot.
+        The hot pixels are masked rather than subtracted, since a fixed
+        pattern found from the observation carries some of the Sun with it.
+
+        Parameters
+        ----------
+        spikes
+            The pixels hit by energetic particles.
+            If :obj:`None` (the default), :meth:`spikes` with its default
+            arguments.
+        fraction
+            The largest fraction of the exposures in which a pixel which is
+            not hot is a spike.
+        threshold
+            The largest fixed pattern of a pixel which is not hot.
+        limit
+            The brightest Sun, smoothed along the slit as the fixed pattern
+            is, on which the fixed pattern is tested.
+            The structure of a bright line along the slit is larger than the
+            fixed pattern, so it would make many of its pixels hot.
+
+        Returns
+        -------
+        :
+            Whether each pixel is hot, along the axes of the outputs other
+            than :attr:`axis_time` and :attr:`axis_detector_x`.
+
+        Raises
+        ------
+        ValueError
+            If the outputs are not in DN.
+
+        See Also
+        --------
+        clean : A copy of the observation without the hot pixels.
+        """
+        if spikes is None:
+            spikes = self.spikes()
+        result = _cleaning.hot_pixels(
+            data=self._data(),
+            variance=cast(na.ScalarArray, self.variance.to(u.DN**2).value),
+            spikes=spikes,
+            axis_exposure=self._axis_exposure,
+            axis_slit=self.axis_detector_y,
+            fraction=fraction,
+            threshold=threshold.to(u.DN).value,
+            limit=limit.to(u.DN).value,
+        )
+        return cast(na.ScalarArray, result)
+
+    def dark_rows(
+        self,
+        ratio: float = 0.5,
+    ) -> na.ScalarArray:
+        """
+        Find the rows along the slit which are darker than the rows around
+        them in every exposure, such as those behind the fiducial marks on
+        the slit, and the dark ends of the slit.
+
+        The signal of a row in an exposure is its mean over the brightest
+        quarter of the wavelengths, where the stray light of the
+        spectrograph, which the fiducial marks do not darken, hides them the
+        least.
+        A row is dark if the median over the exposures of the ratio of its
+        signal to that of the 21 rows around it, the 25% trimmed mean of
+        their signals, is less than `ratio`, by more than five times the
+        uncertainty of the median, from the scatter of the ratio over the
+        exposures.
+        The dark rows are left out of the rows around each row, and the
+        search is repeated until it finds no more, so that a dark end of the
+        slit is found whole.
+        The rows next to each dark row are dark too, since they are partly
+        dark.
+
+        The structure of the Sun along the slit averages out over the
+        exposures of a raster of many steps, but not over a few steps, or a
+        sit-and-stare observation, where it can be taken for dark rows.
+        With fewer than 20 exposures, no rows are found.
+        The fiducial marks of observations summed along the slit are less
+        dark, and can need a larger `ratio`.
+
+        Parameters
+        ----------
+        ratio
+            The largest ratio of the signal of a dark row to that of the rows
+            around it.
+
+        Returns
+        -------
+        :
+            Whether each row is dark, along :attr:`axis_detector_y`.
+
+        Raises
+        ------
+        ValueError
+            If the outputs are not in DN.
+
+        See Also
+        --------
+        clean : A copy of the observation without the dark rows.
+        """
+        result = _cleaning.dark_rows(
+            data=self._data(),
+            axis_exposure=self._axis_exposure,
+            axis_slit=self.axis_detector_y,
+            axis_wavelength=self.axis_wavelength,
+            ratio=ratio,
+        )
+        return cast(na.ScalarArray, result)
+
+    def clean(
+        self,
+        spikes: None | na.AbstractScalar = None,
+        hot_pixels: None | na.AbstractScalar = None,
+        dark_rows: None | na.AbstractScalar = None,
+    ) -> Self:
+        """
+        A copy of this observation whose outputs are NaN where the detector
+        does not see the Sun as it is: at the pixels hit by energetic
+        particles, the hot pixels, and the dark rows.
+
+        Other functions ignore NaN outputs, such as
+        :func:`iris.sg.fit_line`, which leaves them out of each fit.
+
+        Parameters
+        ----------
+        spikes
+            The pixels hit by energetic particles.
+            If :obj:`None` (the default), :meth:`spikes` with its default
+            arguments.
+        hot_pixels
+            The hot pixels.
+            If :obj:`None` (the default), :meth:`hot_pixels` of `spikes`.
+        dark_rows
+            The dark rows.
+            If :obj:`None` (the default), :meth:`dark_rows` with its default
+            arguments.
+
+        Raises
+        ------
+        ValueError
+            If the outputs are not in DN and one of the masks is not given.
+
+        Examples
+        --------
+
+        Clean the first 40 exposures of a raster, and compare one exposure
+        before and after.
+
+        .. jupyter-execute::
+
+            import matplotlib.pyplot as plt
+            import astropy.visualization
+            import named_arrays as na
+            import iris
+
+            # Load the first 40 exposures of a 320-step raster
+            obs = iris.sg.open("2021-09-23T06:13")
+            obs = obs[{obs.axis_detector_x: slice(0, 40)}]
+
+            # Mask the spikes, the hot pixels, and the dark rows
+            cleaned = obs.clean()
+
+            # Plot one exposure before and after, with the masked pixels
+            # in red
+            index = {obs.axis_time: 0, obs.axis_detector_x: 20}
+            with astropy.visualization.quantity_support():
+                fig, ax = plt.subplots(
+                    ncols=2,
+                    figsize=(8, 6),
+                    sharex=True,
+                    sharey=True,
+                    constrained_layout=True,
+                )
+                for axes, o, title in zip(ax, (obs, cleaned), ("level 2", "cleaned")):
+                    axes.set_facecolor("red")
+                    na.plt.imshow(
+                        o.outputs[index].value,
+                        axis_x=obs.axis_wavelength,
+                        axis_y=obs.axis_detector_y,
+                        ax=axes,
+                        cmap="gray",
+                        vmin=0,
+                        vmax=20,
+                        interpolation="none",
+                    )
+                    axes.set_title(title)
+                    axes.set_xlabel("wavelength (pixels)")
+                ax[0].set_ylabel("position along the slit (pixels)")
+        """
+        if spikes is None:
+            spikes = self.spikes()
+        if hot_pixels is None:
+            hot_pixels = self.hot_pixels(spikes=spikes)
+        if dark_rows is None:
+            dark_rows = self.dark_rows()
+        outputs = cast(na.ScalarArray, self.outputs.explicit.copy())
+        outputs[spikes | hot_pixels | dark_rows] = np.nan
+        return dataclasses.replace(self, outputs=outputs)
 
     def show(
         self,

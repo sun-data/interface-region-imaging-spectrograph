@@ -47,6 +47,22 @@ class TestSpectrographObservation:
         result = array.show()
         assert isinstance(result, plt.Axes)
 
+    def test_clean(self, array: iris.sg.SpectrographObservation) -> None:
+        obs = array[{array.axis_detector_x: slice(0, 20)}]
+        spikes = obs.spikes()
+        hot_pixels = obs.hot_pixels(spikes=spikes)
+        dark_rows = obs.dark_rows()
+        result = obs.clean(
+            spikes=spikes,
+            hot_pixels=hot_pixels,
+            dark_rows=dark_rows,
+        )
+        assert 0 < np.mean(spikes) < 0.01
+        assert np.mean(hot_pixels) < 0.02
+        assert 0 < np.mean(dark_rows) < 0.05
+        mask = np.isnan(obs.outputs) | spikes | hot_pixels | dark_rows
+        assert np.all(np.isnan(result.outputs) == mask)
+
     def test_to_jshtml(self, array: iris.sg.SpectrographObservation):
         result = array.to_jshtml()
         assert isinstance(result, IPython.display.HTML)

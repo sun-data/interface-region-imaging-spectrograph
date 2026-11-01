@@ -13,6 +13,7 @@ from ._effective_area import (
 from ._spectrograph import SpectrographObservation
 from ._sg import open
 from ._fit_line import fit_line
+from ._noise_correlation import noise_correlation
 
 __all__ = [
     "models",
@@ -24,4 +25,5 @@ __all__ = [
     "SpectrographObservation",
     "open",
     "fit_line",
+    "noise_correlation",
 ]
